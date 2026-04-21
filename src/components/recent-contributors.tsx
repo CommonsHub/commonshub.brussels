@@ -29,6 +29,18 @@ interface ContributorsData {
   contributors: Contributor[]
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+]
+
+function formatMonth(year?: string, month?: string): string {
+  if (!year || !month) return "this month"
+  const idx = parseInt(month, 10) - 1
+  if (idx < 0 || idx > 11) return "this month"
+  return `${MONTH_NAMES[idx]} ${year}`
+}
+
 /**
  * Display recent contributors from the latest generated data
  */
@@ -106,13 +118,18 @@ export function RecentContributors() {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="flex justify-center gap-8 text-sm text-muted-foreground">
-        <div>
-          <span className="font-medium text-foreground">{stats.totalContributors}</span> active contributors
+      <div className="space-y-1 text-center">
+        <div className="flex justify-center gap-8 text-sm text-muted-foreground">
+          <div>
+            <span className="font-medium text-foreground">{stats.totalContributors}</span> active contributors
+          </div>
+          <div>
+            <span className="font-medium text-foreground">{Math.round(stats.totalTokens)}</span> CHT distributed
+          </div>
         </div>
-        <div>
-          <span className="font-medium text-foreground">{Math.round(stats.totalTokens)}</span> CHT distributed
-        </div>
+        <p className="text-xs text-muted-foreground/80">
+          in {formatMonth(contributorsData?.year, contributorsData?.month)}
+        </p>
       </div>
 
       {/* Contributors Grid */}

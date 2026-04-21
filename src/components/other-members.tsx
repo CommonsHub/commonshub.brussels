@@ -1,0 +1,89 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+interface Member {
+  id: string;
+  firstName?: string | null;
+  status?: string;
+  isOrganization?: boolean;
+}
+
+interface MembersFile {
+  members: Member[];
+}
+
+interface Contributor {
+  profile: { name: string | null; username: string | null; avatar_url: string | null };
+  tokens: { in: number; out: number };
+}
+
+interface ContributorsFile {
+  contributors: Contributor[];
+}
+
+function norm(s: string | null | undefined): string {
+  return (s || "").toLowerCase().trim();
+}
+
+export function OtherMembers() {
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [shownNames, setShownNames] = useState<Set<string> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [mRes, cRes] = await Promise.all([
+          fetch("/data/latest/generated/members.json"),
+          fetch("/data/latest/generated/contributors.json"),
+        ]);
+        if (mRes.ok) {
+          const m: MembersFile = await mRes.json();
+          setMembers(m.members || []);
+        }
+        if (cRes.ok) {
+          const c: ContributorsFile = await cRes.json();
+          const names = new Set<string>();
+          for (const contrib of c.contributors || []) {
+            // Same filter as RecentContributors (avatar + tokens.in > 0)
+            if (contrib.profile?.avatar_url && contrib.tokens?.in > 0) {
+              const n = norm(contrib.profile.name);
+              const u = norm(contrib.profile.username);
+              if (n) names.add(n);
+              if (u) names.add(u);
+            }
+          }
+          setShownNames(names);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!members) return [];
+    return members
+      .filter((m) => m.status === "active" || m.status === "trialing")
+      .filter((m) => !m.isOrganization)
+      .filter((m) => {
+        if (!shownNames) return true;
+        const fn = norm(m.firstName);
+        return !fn || !shownNames.has(fn);
+      })
+      .sort((a, b) => (a.firstName || "").localeCompare(b.firstName || ""));
+  }, [members, shownNames]);
+
+  if (loading || filtered.length === 0) return null;
+
+  const names = filtered.map((m) => m.firstName || "—").join(", ");
+
+  return (
+    <p className="mt-8 text-sm text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
+      <span className="font-medium text-foreground">+{filtered.length} other members</span>:{" "}
+      {names}
+    </p>
+  );
+}

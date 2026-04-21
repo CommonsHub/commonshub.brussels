@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "@/components/optimized-image";
 import { RecentContributors } from "@/components/recent-contributors";
+import { OtherMembers } from "@/components/other-members";
 import { DiscordStatsDisplay } from "@/components/discord-stats";
 import { CommunityActivityGallery } from "@/components/community-activity-gallery";
 import { Button } from "@/components/ui/button";
@@ -28,33 +29,12 @@ const partners: Partner[] = partnersData;
 
 function readLatestMembersFile(): MembersFile | null {
   try {
-    const years = fs
-      .readdirSync(DATA_DIR, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^\d{4}$/.test(entry.name))
-      .map((entry) => entry.name)
-      .sort()
-      .reverse();
-
-    for (const year of years) {
-      const yearPath = path.join(DATA_DIR, year);
-      const months = fs
-        .readdirSync(yearPath, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && /^\d{2}$/.test(entry.name))
-        .map((entry) => entry.name)
-        .sort()
-        .reverse();
-
-      for (const month of months) {
-        const filePath = path.join(yearPath, month, "members.json");
-        if (!fs.existsSync(filePath)) continue;
-        return JSON.parse(fs.readFileSync(filePath, "utf-8")) as MembersFile;
-      }
-    }
+    const filePath = path.join(DATA_DIR, "latest", "generated", "members.json");
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as MembersFile;
   } catch {
-    // Ignore file system issues and hide the stat.
+    return null;
   }
-
-  return null;
 }
 
 export default function MembersPage() {
@@ -183,6 +163,7 @@ export default function MembersPage() {
             </div>
 
             <RecentContributors />
+            <OtherMembers />
 
             <div className="mt-12 text-center space-y-4">
               <Button asChild variant="default">
