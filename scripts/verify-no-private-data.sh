@@ -45,7 +45,7 @@ else
   echo ""
   echo "DO NOT commit these files. Run the following to fix:"
   echo "  1. Delete old cache: find data -type d -name \"stripe\" -exec rm -rf {} +"
-  echo "  2. Re-fetch data: bun run fetch-transactions"
+  echo "  2. Re-sync data via the external data-sync process"
   echo "  3. Re-run this script: ./scripts/verify-no-private-data.sh"
   exit 1
 fi

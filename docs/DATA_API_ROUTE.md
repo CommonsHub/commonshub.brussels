@@ -184,8 +184,7 @@ curl http://localhost:3000/data/latest/discord/1443322327159803945/images.json
 # Check if file exists
 ls -la $DATA_DIR/latest/discord/1443322327159803945/images.json
 
-# Fetch data if missing
-bun run fetch-recent
+# If missing, trigger the external data-sync process that populates DATA_DIR
 ```
 
 ### 403 Forbidden

@@ -209,17 +209,7 @@ echo "DATA_DIR=/var/data/commonshub" >> .env.local
 
 The application includes a `/data` API route that serves files from DATA_DIR automatically.
 
-Fetch initial data:
-
-```bash
-# Fetch recent data (current and previous month)
-bun run fetch-recent
-
-# This will take a few minutes and create:
-# - Discord messages and images
-# - Calendar events
-# - Financial transactions
-```
+Data is populated into `DATA_DIR` by an external data-sync process (separate repo). The website only reads from it. Make sure `DATA_DIR` points to the directory that process writes to (defaults to `~/.chb/data`).
 
 Build the application:
 
@@ -519,11 +509,7 @@ If images don't appear in galleries or room pages:
    cat $DATA_DIR/latest/discord/1443322327159803945/images.json
    ```
 
-3. **If data files are missing, fetch data:**
-   ```bash
-   cd /var/www/commonshub.brussels
-   bun run fetch-recent
-   ```
+3. **If data files are missing:** trigger a run of the external data-sync process that populates `DATA_DIR`.
 
 4. **Test if data is accessible via the API route:**
    ```bash

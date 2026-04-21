@@ -58,8 +58,7 @@ bun install
 cp .env.example .env
 # Edit .env with your API keys
 
-# Fetch data (automatically generates aggregated data)
-bun run fetch-recent
+# Data is populated by the external data-sync process into DATA_DIR (~/.chb/data).
 
 # Start development server
 bun run dev
@@ -119,7 +118,6 @@ If the data directory is empty, the website will display a helpful empty data st
 - **[Deployment Guide](docs/deployment.md)** - Complete Docker deployment instructions
 - **[Coolify Guide](docs/coolify.md)** - Single-resource Coolify deployment with shared persistent volume
 - **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - Automated deployment via GitHub webhooks
-- **[Fetching Transactions](docs/fetch-transactions.md)** - Guide to fetching and managing transaction data
 - **[CLAUDE.md](CLAUDE.md)** - Technical architecture and component documentation
 
 ## Project Structure
@@ -130,7 +128,7 @@ If the data directory is empty, the website will display a helpful empty data st
 │   ├── components/       # React components
 │   ├── lib/              # Utility libraries
 │   └── settings/         # Configuration files
-├── scripts/              # Data fetching and processing scripts
+├── scripts/              # Operational scripts (status check, verification)
 ├── data/                 # Cached data directory (gitignored)
 ├── docs/                 # Documentation
 └── public/               # Static assets
@@ -142,10 +140,8 @@ If the data directory is empty, the website will display a helpful empty data st
 |--------|-------------|
 | `bun run dev` | Start development server |
 | `bun run build` | Build the production app |
-| `chb sync` | Fetch latest data + auto-generate derived files |
-| `chb sync --history` | Fetch full history + auto-generate derived files |
-| `bun run fetch-transactions` | Fetch transaction data only (supports `--month`, `--force` flags) |
-| `bun run generate-data` | Manually regenerate all aggregated data files |
+| `chb sync` | Fetch latest data + auto-generate derived files (external data-sync process) |
+| `chb sync --history` | Fetch full history + auto-generate derived files (external data-sync process) |
 | `bun run restart` | Restart the systemd service |
 | `bun run logs` | View application logs (last 100 lines + follow) |
 | `bun run status` | Check application status, git info, and uptime |

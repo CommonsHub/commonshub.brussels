@@ -26,42 +26,20 @@ The only dynamic part is the ability to login with Discord to
 
 ## Build Process
 
-The build process is separated from data fetching to support Docker volumes:
-
 - `bun run build` - Compiles the Next.js application (does **not** fetch data)
-- `bun run fetch-recent` - Fetches data for current and previous month, then auto-generates all aggregated files
-- `bun run fetch-history` - Fetches all historical data, then auto-generates all aggregated files (run manually when needed)
-- `bun run generate-data` - Manually regenerate all aggregated data files (images, contributors, transactions, events)
-
-### Why Separate Build and Data Fetching?
-
-When using Docker with mounted volumes, data fetched during the build process is lost when the container starts with the volume mount. Therefore:
-
-1. **Build stage:** Only compiles the application
-2. **Runtime stage:** Fetch data after container starts with mounted volume
-3. **Empty data handling:** Website shows a helpful empty data state page with instructions
 
 ### Data Fetching
 
-**Key Simplification:** Fetching data now automatically generates all derived data files (transactions, events, images, contributors), so you don't need to run separate generation commands.
+Data fetching and generation are handled by an external data-sync process (separate repo), which writes into `DATA_DIR` (`~/.chb/data` by default). The website only reads from `DATA_DIR` — it does not fetch or generate data itself.
 
-The fetch scripts automatically skip months that already have cached data, so subsequent runs are much faster.
-
-To fetch a specific month or date range:
-```bash
-bun run fetch-history -- --month=2025-01
-bun run fetch-history -- --start-month=2024-01 --end-month=2024-12
-```
+Layout written by the data-sync process:
+- `DATA_DIR/latest/generated/{members,events,images,contributors,transactions}.json` — latest aggregated snapshots
+- `DATA_DIR/:year/:month/generated/{images,events,transactions}.json` — per-month snapshots
+- `DATA_DIR/:year/generated/images.json` — per-year aggregates
 
 ### Empty Data State
 
-When the data directory is empty or has no data, the website displays a helpful error page that:
-- Explains why data is needed
-- Provides copy-paste commands to fetch data
-- Shows what will be fetched and how long it takes
-- Links to full documentation
-
-This is implemented in `src/components/empty-data-state.tsx` and checked on the homepage via `src/lib/data-check.ts`.
+When the data directory is empty or has no data, the website displays a helpful error page explaining why data is needed. Implemented in `src/components/empty-data-state.tsx` and checked on the homepage via `src/lib/data-check.ts`.
 
 ## Data sources
 (defined in `settings.json`)
