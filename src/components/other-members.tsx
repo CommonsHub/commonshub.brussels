@@ -26,6 +26,12 @@ function norm(s: string | null | undefined): string {
   return (s || "").toLowerCase().trim();
 }
 
+function toTitleCase(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b([a-zà-ÿ])/g, (m) => m.toUpperCase());
+}
+
 export function OtherMembers() {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [shownNames, setShownNames] = useState<Set<string> | null>(null);
@@ -73,12 +79,16 @@ export function OtherMembers() {
         const fn = norm(m.firstName);
         return !fn || !shownNames.has(fn);
       })
-      .sort((a, b) => (a.firstName || "").localeCompare(b.firstName || ""));
+      .sort((a, b) =>
+        (a.firstName || "").toLowerCase().localeCompare((b.firstName || "").toLowerCase()),
+      );
   }, [members, shownNames]);
 
   if (loading || filtered.length === 0) return null;
 
-  const names = filtered.map((m) => m.firstName || "—").join(", ");
+  const names = filtered
+    .map((m) => (m.firstName ? toTitleCase(m.firstName) : "—"))
+    .join(", ");
 
   return (
     <p className="mt-8 text-sm text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">

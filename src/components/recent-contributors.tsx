@@ -24,21 +24,23 @@ interface Contributor {
 }
 
 interface ContributorsData {
-  year: string
-  month: string
+  period?: string
+  since?: string
+  until?: string
   contributors: Contributor[]
 }
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-]
-
-function formatMonth(year?: string, month?: string): string {
-  if (!year || !month) return "this month"
-  const idx = parseInt(month, 10) - 1
-  if (idx < 0 || idx > 11) return "this month"
-  return `${MONTH_NAMES[idx]} ${year}`
+function formatPeriod(period?: string): string {
+  if (!period) return "recently"
+  const match = /^(\d+)days?$/i.exec(period)
+  if (match) {
+    const days = parseInt(match[1], 10)
+    if (days % 30 === 0 && days >= 60) {
+      return `in the last ${days / 30} months`
+    }
+    return `in the last ${days} days`
+  }
+  return period
 }
 
 /**
@@ -128,7 +130,7 @@ export function RecentContributors() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground/80">
-          in {formatMonth(contributorsData?.year, contributorsData?.month)}
+          {formatPeriod(contributorsData?.period)}
         </p>
       </div>
 

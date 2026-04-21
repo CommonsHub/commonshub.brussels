@@ -223,11 +223,15 @@ export default function EconomyPage() {
             <div className="prose prose-lg dark:prose-invert max-w-none space-y-6">
               <p className="text-xl text-muted-foreground leading-relaxed text-center">
                 You can use your tokens to book a room, get coffee or a drink.
-                You can also exchange them between each other. Just use the{" "}
+                To book a room, use the{" "}
+                <code className="bg-muted px-2 py-1 rounded text-primary">
+                  /book
+                </code>{" "}
+                command on Discord. You can also exchange tokens between each other with the{" "}
                 <code className="bg-muted px-2 py-1 rounded text-primary">
                   /send
                 </code>{" "}
-                command on Discord.
+                command.
               </p>
               <p className="text-xl text-muted-foreground leading-relaxed text-center">
                 Whenever you make a proposal to make use of the resources of the

@@ -24,7 +24,7 @@ export default function FiscalSponsorshipPage() {
   return (
     <main className="min-h-screen bg-background">
       {/* Hero */}
-      <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8 bg-linear-to-b from-primary/5 to-background">
+      <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8 bg-primary/5">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6 text-balance">
             Fiscal Sponsorship
@@ -45,31 +45,8 @@ export default function FiscalSponsorshipPage() {
         </div>
       </section>
 
-      {/* Why */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-6">
-            Why we offer this
-          </h2>
-          <div className="space-y-4 text-muted-foreground leading-relaxed">
-            <p>
-              Over time, individuals and groups often come to the Commons Hub to
-              organise an event and want to sell tickets — but they don&apos;t yet have
-              a legal entity or bank account of their own. In practice, they&apos;d use
-              our Luma account, we&apos;d receive the ticket revenue, keep part of it
-              for the room, and reimburse their expenses from what was left.
-            </p>
-            <p>
-              We were already sharing more than a physical space — we were sharing a
-              legal entity and a bank account. Offering fiscal sponsorship is simply a
-              way to formalize that relationship: transparent, fair, and scalable.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Who is this for */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-card/50 border-y border-border">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-background">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-4">
@@ -135,6 +112,29 @@ export default function FiscalSponsorshipPage() {
                 </a>
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-card/50 border-y border-border">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-6">
+            Why we offer this
+          </h2>
+          <div className="space-y-4 text-muted-foreground leading-relaxed">
+            <p>
+              Over time, individuals and groups often come to the Commons Hub to
+              organise an event and want to sell tickets — but they don&apos;t yet have
+              a legal entity or bank account of their own. In practice, they&apos;d use
+              our Luma account, we&apos;d receive the ticket revenue, keep part of it
+              for the room, and reimburse their expenses from what was left.
+            </p>
+            <p>
+              We were already sharing more than a physical space — we were sharing a
+              legal entity and a bank account. Offering fiscal sponsorship is simply a
+              way to formalize that relationship: transparent, fair, and scalable.
+            </p>
           </div>
         </div>
       </section>
@@ -297,7 +297,7 @@ VAT: BE0804505132`}
       {/* Apply */}
       <section
         id="apply"
-        className="py-16 px-4 sm:px-6 lg:px-8 bg-card/50 border-t border-border scroll-mt-20"
+        className="py-16 px-4 sm:px-6 lg:px-8 bg-background border-t border-border scroll-mt-20"
       >
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
