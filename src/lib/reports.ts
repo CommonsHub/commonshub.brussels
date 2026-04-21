@@ -774,19 +774,18 @@ function readFinancialTransactions(
  * Read CHT (ContributionToken) transactions for a specific month
  */
 function readCHTTransactions(year: string, month: string): TokenTransfer[] {
-  // New path structure: data/{year}/{month}/finance/celo/CHT.json
-  const chtPath = path.join(
-    DATA_DIR,
-    year,
-    month,
-    "finance",
-    "celo",
-    "CHT.json"
-  );
+  // Data-sync writes the file as {slug}.{symbol}.json on the chain directory.
+  const chain = settings.contributionToken?.chain || "celo";
+  const symbol = settings.contributionToken?.symbol || "CHT";
+  const chainDir = path.join(DATA_DIR, year, month, "finance", chain);
 
-  if (!fs.existsSync(chtPath)) {
-    return [];
-  }
+  const candidates = [
+    path.join(chainDir, `cht.${symbol}.json`),
+    path.join(chainDir, `${symbol}.json`),
+  ];
+
+  const chtPath = candidates.find((p) => fs.existsSync(p));
+  if (!chtPath) return [];
 
   try {
     const content = fs.readFileSync(chtPath, "utf-8");
