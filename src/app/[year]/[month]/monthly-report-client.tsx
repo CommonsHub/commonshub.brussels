@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { ReportNotAvailable } from "@/components/report-not-available";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -127,14 +128,11 @@ export function MonthlyReportClient() {
 
   if (error || !data) {
     return (
-      <div className="container mx-auto py-12 px-4">
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Error Loading Report</CardTitle>
-            <CardDescription>{error || "Unable to load monthly report"}</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <ReportNotAvailable
+        message={`The ${year}-${month} report isn't available yet. See how ${year} is going so far in the yearly report.`}
+        backHref={`/${year}`}
+        backLabel={`Go to ${year} yearly report`}
+      />
     );
   }
 

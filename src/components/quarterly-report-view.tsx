@@ -18,7 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { X, Lock } from "lucide-react";
+import { X, Lock, ExternalLink } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   OdooRow,
   PartnerAggregate,
@@ -45,8 +52,145 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
-    year: "numeric",
   });
+}
+
+const CATEGORY_PALETTE = [
+  "bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200",
+  "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200",
+  "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200",
+  "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200",
+  "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200",
+  "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-200",
+  "bg-lime-100 text-lime-800 dark:bg-lime-500/20 dark:text-lime-200",
+  "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-500/20 dark:text-fuchsia-200",
+  "bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200",
+  "bg-teal-100 text-teal-800 dark:bg-teal-500/20 dark:text-teal-200",
+  "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200",
+  "bg-pink-100 text-pink-800 dark:bg-pink-500/20 dark:text-pink-200",
+];
+
+function categoryColor(category: string): string {
+  if (!category || category === "—") {
+    return "bg-muted text-muted-foreground";
+  }
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) {
+    hash = (hash * 31 + category.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(hash) % CATEGORY_PALETTE.length;
+  return CATEGORY_PALETTE[idx];
+}
+
+function statusColor(status: string): string {
+  const s = status?.toLowerCase() || "";
+  if (s === "paid" || s === "in_payment") {
+    return "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200";
+  }
+  if (s === "not_paid") {
+    return "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200";
+  }
+  return "";
+}
+
+const ALL_VALUE = "__all__";
+
+const MAX_BAR_HEIGHT_PX = 320;
+
+function CategoryBreakdownBar({
+  title,
+  items,
+  total,
+  maxTotal,
+  selected,
+  onSelect,
+  emptyLabel,
+}: {
+  title: string;
+  items: Array<{ category: string; total: number; count: number }>;
+  total: number;
+  maxTotal: number;
+  selected: string;
+  onSelect: (value: string) => void;
+  emptyLabel: string;
+}) {
+  const barHeight = maxTotal > 0 ? (total / maxTotal) * MAX_BAR_HEIGHT_PX : 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg">{title}</CardTitle>
+        <CardDescription>
+          {items.length === 0 ? emptyLabel : `${formatEur(total)} total`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? null : (
+          <div className="flex items-stretch gap-4">
+            {/* Bar */}
+            <div
+              className="relative w-12 flex-shrink-0 flex flex-col justify-end rounded-md overflow-hidden border border-border bg-muted/30"
+              style={{ height: `${MAX_BAR_HEIGHT_PX}px` }}
+              aria-hidden
+            >
+              <div
+                className="flex flex-col"
+                style={{ height: `${barHeight}px` }}
+              >
+                {items.map((item) => {
+                  const segmentHeight = total > 0 ? (item.total / total) * barHeight : 0;
+                  const isSelected = selected === item.category;
+                  return (
+                    <button
+                      key={item.category}
+                      type="button"
+                      onClick={() => onSelect(isSelected ? ALL_VALUE : item.category)}
+                      className={`${categoryColor(item.category)} transition-opacity cursor-pointer border-b border-background/30 last:border-b-0 ${
+                        isSelected ? "ring-2 ring-primary ring-inset" : "hover:opacity-80"
+                      }`}
+                      style={{ height: `${segmentHeight}px` }}
+                      title={`${item.category}: ${formatEur(item.total)} (${Math.round((item.total / total) * 100)}%)`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <ul className="flex-1 min-w-0 space-y-1 text-sm self-end">
+              {items.map((item) => {
+                const pct = total > 0 ? (item.total / total) * 100 : 0;
+                const isSelected = selected === item.category;
+                return (
+                  <li key={item.category}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(isSelected ? ALL_VALUE : item.category)}
+                      className={`w-full flex items-center justify-between gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-pointer hover:bg-accent/50 ${
+                        isSelected ? "bg-accent" : ""
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`inline-block h-2.5 w-2.5 rounded-sm flex-shrink-0 ${categoryColor(item.category)}`}
+                          aria-hidden
+                        />
+                        <span className="text-xs truncate">{item.category}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                        {formatEur(item.total)}
+                        <span className="ml-1 opacity-70">({pct.toFixed(0)}%)</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function PartnerList({
@@ -90,7 +234,7 @@ function PartnerList({
                 <button
                   type="button"
                   onClick={() => onSelect(isSelected ? null : p.key)}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-accent/50 ${
+                  className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors cursor-pointer hover:bg-accent/50 ${
                     isSelected ? "bg-accent" : ""
                   }`}
                 >
@@ -122,24 +266,83 @@ function PartnerList({
 
 export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps) {
   const [selectedPartnerKey, setSelectedPartnerKey] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>(ALL_VALUE);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [typeFilter, setTypeFilter] = useState<"all" | "invoice" | "bill">("all");
+
+  // Unique values for dropdowns (derived from rows)
+  const partnerOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of data.rows) {
+      if (!map.has(row.partnerKey)) map.set(row.partnerKey, row.partnerLabel);
+    }
+    return Array.from(map.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data.rows]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of data.rows) set.add(row.category);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [data.rows]);
+
+  const statusOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of data.rows) if (row.status) set.add(row.status);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [data.rows]);
 
   const filteredRows: OdooRow[] = useMemo(() => {
     return data.rows.filter((row) => {
       if (selectedPartnerKey && row.partnerKey !== selectedPartnerKey) return false;
+      if (categoryFilter !== ALL_VALUE && row.category !== categoryFilter) return false;
+      if (statusFilter !== ALL_VALUE && row.status !== statusFilter) return false;
       if (typeFilter !== "all" && row.type !== typeFilter) return false;
       return true;
     });
-  }, [data.rows, selectedPartnerKey, typeFilter]);
+  }, [data.rows, selectedPartnerKey, categoryFilter, statusFilter, typeFilter]);
 
   const { totals } = data;
 
   const selectedLabel = useMemo(() => {
     if (!selectedPartnerKey) return null;
-    const vendor = data.topVendors.find((v) => v.key === selectedPartnerKey);
-    const customer = data.topCustomers.find((c) => c.key === selectedPartnerKey);
-    return (vendor || customer)?.label ?? null;
-  }, [selectedPartnerKey, data.topVendors, data.topCustomers]);
+    return partnerOptions.find((p) => p.key === selectedPartnerKey)?.label ?? null;
+  }, [selectedPartnerKey, partnerOptions]);
+
+  const hasAnyFilter =
+    selectedPartnerKey !== null ||
+    categoryFilter !== ALL_VALUE ||
+    statusFilter !== ALL_VALUE ||
+    typeFilter !== "all";
+
+  const clearAllFilters = () => {
+    setSelectedPartnerKey(null);
+    setCategoryFilter(ALL_VALUE);
+    setStatusFilter(ALL_VALUE);
+    setTypeFilter("all");
+  };
+
+  const hasOdooLinks = useMemo(() => data.rows.some((r) => !!r.odooUrl), [data.rows]);
+
+  const categoriesByType = useMemo(() => {
+    function aggregate(rows: OdooRow[]) {
+      const map = new Map<string, { total: number; count: number }>();
+      for (const row of rows) {
+        const entry = map.get(row.category) || { total: 0, count: 0 };
+        entry.total += row.totalAmount;
+        entry.count += 1;
+        map.set(row.category, entry);
+      }
+      return Array.from(map.entries())
+        .map(([category, v]) => ({ category, ...v }))
+        .sort((a, b) => b.total - a.total);
+    }
+    return {
+      invoice: aggregate(data.rows.filter((r) => r.type === "invoice")),
+      bill: aggregate(data.rows.filter((r) => r.type === "bill")),
+    };
+  }, [data.rows]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -170,18 +373,7 @@ export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps)
         </div>
 
         {/* Totals */}
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total invoiced</CardDescription>
-              <CardTitle className="text-2xl tabular-nums">
-                {formatEur(totals.invoicedTotal)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 text-xs text-muted-foreground">
-              {totals.invoiceCount} invoices · ex. VAT {formatEur(totals.invoicedUntaxed)}
-            </CardContent>
-          </Card>
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total bills received</CardDescription>
@@ -195,64 +387,76 @@ export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps)
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>VAT paid to the state</CardDescription>
+              <CardDescription>Total invoiced</CardDescription>
               <CardTitle className="text-2xl tabular-nums">
-                {formatEur(totals.vatCollected)}
+                {formatEur(totals.invoicedTotal)}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0 text-xs text-muted-foreground">
-              Collected on outgoing invoices
+              {totals.invoiceCount} invoices · ex. VAT {formatEur(totals.invoicedUntaxed)}
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>VAT claimed back</CardDescription>
-              <CardTitle className="text-2xl tabular-nums">
-                {formatEur(totals.vatDeductible)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 text-xs text-muted-foreground">
-              Deductible on bills received
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Net VAT */}
-        <section>
           <Card className="border-primary/30">
-            <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-4">
-              <div>
-                <p className="text-sm font-medium">Net VAT position</p>
-                <p className="text-xs text-muted-foreground">
-                  Collected minus deductible — positive means due to the state, negative means refundable.
-                </p>
-              </div>
-              <p
-                className={`text-2xl font-bold tabular-nums ${
+            <CardHeader className="pb-2">
+              <CardDescription>Net VAT position</CardDescription>
+              <CardTitle
+                className={`text-2xl tabular-nums ${
                   totals.vatNet >= 0 ? "text-foreground" : "text-green-600"
                 }`}
               >
                 {formatEur(totals.vatNet)}
-              </p>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 text-xs text-muted-foreground space-y-0.5">
+              <div className="flex items-center justify-between gap-2">
+                <span>Paid to state (on invoices)</span>
+                <span className="tabular-nums">{formatEur(totals.vatCollected)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span>Claimed back (on bills)</span>
+                <span className="tabular-nums">{formatEur(totals.vatDeductible)}</span>
+              </div>
             </CardContent>
           </Card>
         </section>
 
-        {/* Top partners */}
+        {/* Category breakdown */}
         <section className="grid gap-4 lg:grid-cols-2">
-          <PartnerList
-            title="Top customers"
-            partners={data.topCustomers}
-            selectedKey={selectedPartnerKey}
-            onSelect={setSelectedPartnerKey}
+          <CategoryBreakdownBar
+            title="Costs by category"
+            items={categoriesByType.bill}
+            total={Math.abs(totals.billsTotal)}
+            maxTotal={Math.max(Math.abs(totals.billsTotal), Math.abs(totals.invoicedTotal))}
+            selected={categoryFilter}
+            onSelect={setCategoryFilter}
+            emptyLabel="No bills in this quarter."
+          />
+          <CategoryBreakdownBar
+            title="Income by category"
+            items={categoriesByType.invoice}
+            total={Math.abs(totals.invoicedTotal)}
+            maxTotal={Math.max(Math.abs(totals.billsTotal), Math.abs(totals.invoicedTotal))}
+            selected={categoryFilter}
+            onSelect={setCategoryFilter}
             emptyLabel="No invoices in this quarter."
           />
+        </section>
+
+        {/* Top partners */}
+        <section className="grid gap-4 lg:grid-cols-2">
           <PartnerList
             title="Top vendors"
             partners={data.topVendors}
             selectedKey={selectedPartnerKey}
             onSelect={setSelectedPartnerKey}
             emptyLabel="No bills in this quarter."
+          />
+          <PartnerList
+            title="Top customers"
+            partners={data.topCustomers}
+            selectedKey={selectedPartnerKey}
+            onSelect={setSelectedPartnerKey}
+            emptyLabel="No invoices in this quarter."
           />
         </section>
 
@@ -298,14 +502,14 @@ export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps)
                     Bills
                   </Button>
                 </div>
-                {selectedPartnerKey && (
+                {hasAnyFilter && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setSelectedPartnerKey(null)}
+                    onClick={clearAllFilters}
                   >
                     <X className="w-4 h-4 mr-1" />
-                    Clear filter
+                    Clear filters
                   </Button>
                 )}
               </div>
@@ -316,21 +520,69 @@ export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps)
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Partner</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead className="text-right">Untaxed</TableHead>
-                      <TableHead className="text-right">VAT</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="min-w-[180px]">
+                        <Select
+                          value={selectedPartnerKey ?? ALL_VALUE}
+                          onValueChange={(v) =>
+                            setSelectedPartnerKey(v === ALL_VALUE ? null : v)
+                          }
+                        >
+                          <SelectTrigger className="h-8 border-0 bg-transparent px-0 font-medium text-foreground shadow-none focus:ring-0 focus-visible:ring-0 cursor-pointer">
+                            <SelectValue placeholder="Partner" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[320px]">
+                            <SelectItem value={ALL_VALUE}>All partners</SelectItem>
+                            {partnerOptions.map((p) => (
+                              <SelectItem key={p.key} value={p.key}>
+                                {p.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableHead>
+                      <TableHead className="min-w-[160px]">
+                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                          <SelectTrigger className="h-8 border-0 bg-transparent px-0 font-medium text-foreground shadow-none focus:ring-0 focus-visible:ring-0 cursor-pointer">
+                            <SelectValue placeholder="Category" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[320px]">
+                            <SelectItem value={ALL_VALUE}>All categories</SelectItem>
+                            {categoryOptions.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="min-w-[130px]">
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <SelectTrigger className="h-8 border-0 bg-transparent px-0 font-medium text-foreground shadow-none focus:ring-0 focus-visible:ring-0 cursor-pointer">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
+                            {statusOptions.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                <span className="capitalize">
+                                  {s.replace(/_/g, " ")}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableHead>
+                      {hasOdooLinks && (
+                        <TableHead className="w-10"></TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRows.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={9}
+                          colSpan={hasOdooLinks ? 6 : 5}
                           className="text-center text-sm text-muted-foreground py-10"
                         >
                           No entries match the current filter.
@@ -339,49 +591,59 @@ export function QuarterlyReportView({ data, showPii }: QuarterlyReportViewProps)
                     )}
                     {filteredRows.map((row) => (
                       <TableRow key={`${row.type}-${row.id}`}>
-                        <TableCell className="whitespace-nowrap text-sm">
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                           {formatDate(row.date)}
                         </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={row.type === "invoice" ? "default" : "secondary"}
-                            className="capitalize"
-                          >
-                            {row.direction === "refund"
-                              ? `${row.type} refund`
-                              : row.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[240px]">
+                        <TableCell className="max-w-[260px]">
                           <button
                             type="button"
                             onClick={() => setSelectedPartnerKey(row.partnerKey)}
-                            className="text-left text-sm hover:underline truncate block w-full"
+                            className="text-left hover:underline block min-w-0 w-full cursor-pointer"
                             title={row.partnerLabel}
                           >
-                            {row.partnerLabel}
+                            <span className="text-sm truncate block">
+                              {row.partnerLabel}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                              {row.direction === "refund" ? `${row.type} refund` : row.type}
+                            </span>
                           </button>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.category}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {row.reference || "—"}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {formatEur(row.untaxedAmount, 2)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {formatEur(row.vatAmount, 2)}
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${categoryColor(
+                              row.category,
+                            )}`}
+                          >
+                            {row.category}
+                          </span>
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-sm font-medium">
                           {formatEur(row.totalAmount, 2)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs capitalize">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs capitalize ${statusColor(row.status)}`}
+                          >
                             {row.status?.replace(/_/g, " ") || "—"}
                           </Badge>
                         </TableCell>
+                        {hasOdooLinks && (
+                          <TableCell className="w-10">
+                            {row.odooUrl && (
+                              <a
+                                href={row.odooUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                title="Open in Odoo"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

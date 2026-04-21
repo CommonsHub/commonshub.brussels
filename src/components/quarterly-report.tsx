@@ -6,6 +6,7 @@ import {
   type QuarterlyData,
 } from "@/lib/odoo-quarter";
 import { QuarterlyReportView } from "./quarterly-report-view";
+import { ReportNotAvailable } from "./report-not-available";
 
 interface QuarterlyReportProps {
   year: string;
@@ -14,31 +15,46 @@ interface QuarterlyReportProps {
 
 export const dynamic = "force-dynamic";
 
-async function isMember(): Promise<boolean> {
+interface Perms {
+  isMember: boolean;
+  isSteward: boolean;
+}
+
+async function getPerms(): Promise<Perms> {
   try {
     const session = await auth();
+    if (!session?.user) return { isMember: false, isSteward: false };
+    const user = session.user as {
+      roles?: string[];
+      roleDetails?: Array<{ id: string; name: string }>;
+    };
     const memberRoleId = settings.discord?.roles?.member;
-    if (!session?.user || !memberRoleId) return false;
-    const roles = (session.user as { roles?: string[] }).roles || [];
-    return roles.includes(memberRoleId);
+    const isMember = memberRoleId ? (user.roles || []).includes(memberRoleId) : false;
+    const isSteward = (user.roleDetails || []).some((r) =>
+      (r.name || "").toLowerCase().includes("steward"),
+    );
+    return { isMember: isMember || isSteward, isSteward };
   } catch {
-    return false;
+    return { isMember: false, isSteward: false };
   }
 }
 
 export async function QuarterlyReport({ year, quarter }: QuarterlyReportProps) {
-  if (!/^\d{4}$/.test(year)) {
+  const perms = await getPerms();
+  const data: QuarterlyData = loadQuarterlyOdoo(year, quarter, {
+    showPii: perms.isMember,
+    showOdooLinks: perms.isSteward,
+  });
+
+  if (data.rows.length === 0) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="pt-24 pb-16 max-w-4xl mx-auto px-6">
-          <h1 className="text-2xl font-bold">Invalid year</h1>
-        </div>
-      </main>
+      <ReportNotAvailable
+        message={`The ${year} Q${quarter} report isn't available yet. See how ${year} is going so far in the yearly report.`}
+        backHref={`/${year}`}
+        backLabel={`Go to ${year} yearly report`}
+      />
     );
   }
 
-  const showPii = await isMember();
-  const data: QuarterlyData = loadQuarterlyOdoo(year, quarter, { showPii });
-
-  return <QuarterlyReportView data={data} showPii={showPii} />;
+  return <QuarterlyReportView data={data} showPii={perms.isMember} />;
 }

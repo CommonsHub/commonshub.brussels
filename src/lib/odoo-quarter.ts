@@ -24,6 +24,7 @@ export interface OdooRow {
   vatAmount: number;
   totalAmount: number;
   status: string;
+  odooUrl?: string;
 }
 
 export interface QuarterlyTotals {
@@ -105,6 +106,7 @@ interface PrivateRecord {
   reference?: string;
   ref?: string;
   number?: string;
+  invoiceUrl?: string;
 }
 
 function readJson<T>(filePath: string): T | null {
@@ -123,6 +125,7 @@ function buildRow(
   type: OdooRowType,
   month: string,
   showPii: boolean,
+  showOdooLinks: boolean,
 ): OdooRow {
   const isRefund = priv.moveType === "out_refund" || priv.moveType === "in_refund";
   const sign = isRefund ? -1 : 1;
@@ -157,6 +160,7 @@ function buildRow(
     vatAmount: (pub.vatAmount ?? 0) * sign,
     totalAmount: (pub.totalAmount ?? 0) * sign,
     status: pub.paymentState || pub.state,
+    odooUrl: showOdooLinks ? priv.invoiceUrl : undefined,
   };
 }
 
@@ -183,8 +187,9 @@ function aggregateByPartner(rows: OdooRow[]): PartnerAggregate[] {
 export function loadQuarterlyOdoo(
   year: string,
   quarter: Quarter,
-  options: { showPii: boolean },
+  options: { showPii: boolean; showOdooLinks?: boolean },
 ): QuarterlyData {
+  const showOdooLinks = options.showOdooLinks ?? false;
   const months = getQuarterMonths(quarter);
   const rows: OdooRow[] = [];
   const missingMonths: string[] = [];
@@ -211,7 +216,7 @@ export function loadQuarterlyOdoo(
         if (pub.state !== "posted") continue;
         const priv = privMap.get(pub.id);
         if (!priv) continue;
-        rows.push(buildRow(pub, priv, "invoice", month, options.showPii));
+        rows.push(buildRow(pub, priv, "invoice", month, options.showPii, showOdooLinks));
       }
     }
     if (pubBill && prvBill) {
@@ -220,7 +225,7 @@ export function loadQuarterlyOdoo(
         if (pub.state !== "posted") continue;
         const priv = privMap.get(pub.id);
         if (!priv) continue;
-        rows.push(buildRow(pub, priv, "bill", month, options.showPii));
+        rows.push(buildRow(pub, priv, "bill", month, options.showPii, showOdooLinks));
       }
     }
   }
