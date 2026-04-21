@@ -6,6 +6,7 @@ import settings from "@/settings/settings.json"
 const reasonLabels: Record<string, string> = {
   "booking-room": "Booking a room",
   "joining-community": "Joining the community",
+  "fiscal-sponsorship": "Fiscal sponsorship application",
   research: "Research",
   visit: "Visit",
   media: "Media",
