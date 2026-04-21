@@ -4,17 +4,9 @@
  */
 
 import { toZonedTime } from "date-fns-tz"
+import * as fs from "fs"
+import * as path from "path"
 import { DATA_DIR } from "./data-paths"
-
-let fs: typeof import("fs") | null = null
-let path: typeof import("path") | null = null
-
-try {
-  fs = require("fs")
-  path = require("path")
-} catch {
-  console.log("[v2] Discord cache: file system not available, using memory-only mode")
-}
 const TIMEZONE = process.env.TZ || "Europe/Brussels"
 
 const memoryCache = new Map<string, CachedMessage[]>()

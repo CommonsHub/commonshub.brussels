@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -211,7 +212,6 @@ export async function fetchAndProcessExternalImage(
     // Apply resizing if size parameter is provided
     if (sizeParam && SIZE_CONFIG[sizeParam]) {
       // Create a hash of the URL to use as imageId
-      const crypto = require("crypto");
       const imageId = crypto.createHash("md5").update(url).digest("hex");
       buffer = await resizeAndCacheImage(buffer, imageId, sizeParam);
       contentType = "image/jpeg"; // Resized images are always JPEG
