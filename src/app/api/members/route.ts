@@ -1,7 +1,7 @@
 /**
  * API route to get membership data
  *
- * Reads pre-generated data from data/{year}/{month}/members.json
+ * Reads pre-generated data from data/{year}/{month}/generated/members.json
  * Use /api/sync to refresh data on demand.
  *
  * GET /api/members              → current month
@@ -33,7 +33,7 @@ function findLatestMembersPath(): string | null {
         .reverse();
 
       for (const month of months) {
-        const membersPath = path.join(yearPath, month, "members.json");
+        const membersPath = path.join(yearPath, month, "generated", "members.json");
         if (fs.existsSync(membersPath)) {
           return membersPath;
         }
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   const month = searchParams.get("month");
   const membersPath =
     year && month
-      ? path.join(DATA_DIR, year, month.padStart(2, "0"), "members.json")
+      ? path.join(DATA_DIR, year, month.padStart(2, "0"), "generated", "members.json")
       : findLatestMembersPath();
 
   if (!membersPath || !fs.existsSync(membersPath)) {
