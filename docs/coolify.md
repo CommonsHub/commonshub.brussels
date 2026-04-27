@@ -61,6 +61,7 @@ Set the data-fetching secrets for the `chbcli` service only:
 
 ```bash
 DATA_DIR=/data
+APP_DATA_DIR=/app-data
 DISCORD_BOT_TOKEN=your-discord-bot-token
 LUMA_API_KEY=your-luma-api-key
 STRIPE_SECRET_KEY=your-stripe-secret-key
@@ -73,22 +74,26 @@ Do not define those fetch secrets on the `web` service.
 
 ## Persistent Data
 
-The compose file declares a named volume:
+The compose file declares two named volumes:
 
 ```yaml
 volumes:
   commonshub-data:
     name: commonshub-data
+  commonshub-app-data:
+    name: commonshub-app-data
 ```
 
-That volume is mounted into both services at `/data`, so data stays available across normal redeployments.
+`commonshub-data` is mounted into both services at `/data`, so the synced dataset stays available across normal redeployments.
 In the compose file, `web` mounts it read-only and `chbcli` mounts it read-write.
+
+`commonshub-app-data` is mounted only on `chbcli` at `/app-data` (`APP_DATA_DIR`). It holds chb CLI settings and OAuth tokens that must survive redeploys; without this volume the worker would lose its credentials every time the image is rebuilt.
 
 Important:
 
-- Redeploying or rebuilding does not remove the volume.
-- Deleting the resource and its volumes does remove it.
-- The volume name is fixed to `commonshub-data`, so the mount target stays stable.
+- Redeploying or rebuilding does not remove the volumes.
+- Deleting the resource and its volumes does remove them.
+- The volume names are fixed (`commonshub-data`, `commonshub-app-data`), so mount targets stay stable.
 
 The worker image stays alive with `sleep infinity`, which lets Coolify scheduled tasks execute `chb` commands inside that container.
 

@@ -34,6 +34,7 @@ services:
     restart: unless-stopped
     environment:
       DATA_DIR: /data
+      APP_DATA_DIR: /app-data
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       LUMA_API_KEY: ${LUMA_API_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
@@ -42,6 +43,7 @@ services:
       MONERIUM_CLIENT_SECRET: ${MONERIUM_CLIENT_SECRET}
     volumes:
       - commonshub-data:/data
+      - commonshub-app-data:/app-data
     healthcheck:
       test: ["CMD", "chb", "version"]
       interval: 30s
@@ -52,3 +54,5 @@ services:
 volumes:
   commonshub-data:
     name: commonshub-data
+  commonshub-app-data:
+    name: commonshub-app-data

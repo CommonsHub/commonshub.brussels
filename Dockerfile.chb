@@ -31,12 +31,13 @@ RUN apk add --no-cache ca-certificates curl gcompat libc6-compat tar \
  && echo "Installed chb binary:" \
  && chb version \
  && rm -f /tmp/chb.tar.gz /tmp/checksums.txt "/tmp/chb_${VERSION#v}_linux_${CHB_ARCH}" \
- && mkdir -p /data /app/src/settings \
- && chown -R chb:chb /data /app
+ && mkdir -p /data /app-data /app/src/settings \
+ && chown -R chb:chb /data /app-data /app
 
 COPY --chown=chb:chb src/settings ./src/settings
 
 ENV DATA_DIR=/data
+ENV APP_DATA_DIR=/app-data
 
 USER chb
 
