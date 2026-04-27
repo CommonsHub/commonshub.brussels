@@ -3,6 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
 
+export const revalidate = 300;
+
 // Cache for 5 minutes (data files are already pre-generated hourly)
 let cachedData: {
   events: HomepageEvent[];
