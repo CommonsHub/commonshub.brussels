@@ -20,11 +20,11 @@ services:
     volumes:
       - commonshub-data:/data:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:${PORT:-3000}/status.json >/dev/null"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-3000}/status.json >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
 
   chbcli:
     build:

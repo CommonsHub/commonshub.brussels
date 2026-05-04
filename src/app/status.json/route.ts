@@ -34,12 +34,19 @@ function getDataDirStatus() {
   const raw = process.env.DATA_DIR || null;
   const resolved = DATA_DIR;
   const exists = existsSync(resolved);
-  const years = exists
-    ? readdirSync(resolved, { withFileTypes: true })
+
+  let years: string[] = [];
+  let readError: string | null = null;
+  if (exists) {
+    try {
+      years = readdirSync(resolved, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && /^\d{4}$/.test(entry.name))
         .map((entry) => entry.name)
-        .sort()
-    : [];
+        .sort();
+    } catch (error) {
+      readError = error instanceof Error ? error.message : "Failed to read data directory";
+    }
+  }
 
   let writable = false;
   try {
@@ -73,6 +80,7 @@ function getDataDirStatus() {
     exists,
     writable,
     years,
+    readError,
     stats: {
       yearCount: years.length,
       upcomingEvents,
@@ -80,6 +88,27 @@ function getDataDirStatus() {
       lastSync,
     },
   };
+}
+
+function formatInTimezone(date: Date, timezone: string): string | null {
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  try {
+    return date.toLocaleString("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return date.toISOString();
+  }
 }
 
 /**
@@ -132,42 +161,29 @@ export async function GET() {
     // Get timezone from environment or default to Europe/Brussels
     const timezone = process.env.TZ || "Europe/Brussels";
 
-    // Format dates in the configured timezone
-    const formatInTimezone = (date: Date) => {
-      return date.toLocaleString("en-US", {
-        timeZone: timezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
-    };
-
     const response = {
       status: "ok",
+      ready: true,
       deployment: {
         sha: sha,
         shortSha: shortSha,
         message: message,
         commitDate: commitDate,
-        commitDateFormatted: commitDate ? formatInTimezone(new Date(commitDate)) : null,
+        commitDateFormatted: commitDate ? formatInTimezone(new Date(commitDate), timezone) : null,
       },
       build: {
         time: buildTime,
-        timeFormatted: buildTime ? formatInTimezone(new Date(buildTime)) : null,
+        timeFormatted: buildTime ? formatInTimezone(new Date(buildTime), timezone) : null,
       },
       uptime: {
         started: startTime.toISOString(),
-        startedFormatted: formatInTimezone(startTime),
+        startedFormatted: formatInTimezone(startTime, timezone),
         uptime: uptimeFormatted,
         uptimeSeconds: uptimeSeconds,
       },
       server: {
         time: now.toISOString(),
-        timeFormatted: formatInTimezone(now),
+        timeFormatted: formatInTimezone(now, timezone),
         timezone: timezone,
       },
       environment: process.env.NODE_ENV || "development",
@@ -185,14 +201,20 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        status: "error",
+        status: "degraded",
+        ready: true,
         error: errorMessage,
         uptime: {
           started: startTime.toISOString(),
           uptime: Math.floor((Date.now() - startTime.getTime()) / 1000),
         },
       },
-      { status: 500 }
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+      }
     );
   }
 }

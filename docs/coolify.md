@@ -158,6 +158,8 @@ In Coolify, also verify:
 - the domain is attached to the `web` service, not `chbcli`
 - the domain target port is `3000`
 
+The `web` service health check can use `/status.json`, but that route must stay robust and return `200` even when one diagnostic sub-check degrades. The compose file therefore uses `/status.json` with a tighter probe interval so Coolify can mark the new container healthy sooner during deploys.
+
 Check the worker container:
 
 ```bash

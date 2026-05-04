@@ -75,4 +75,25 @@ describe("Status Endpoint", () => {
       data.server.timezone
     );
   });
+
+  it("should stay 200 even with an invalid timezone", async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Invalid/Timezone";
+
+    try {
+      const response = await GET();
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe("ok");
+      expect(data.ready).toBe(true);
+      expect(data.server.timeFormatted).toBeTruthy();
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
+  });
 });
