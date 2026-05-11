@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import * as fs from "fs"
+import * as path from "path"
 import { getAccountAddressFromDiscordUserId } from "@/lib/citizenwallet"
 import {
   fetchTokenBalance,
@@ -12,6 +14,7 @@ import {
   setCachedWalletAddress,
 } from "@/lib/wallet-address-cache"
 import settings from "@/settings/settings.json"
+import { DATA_DIR } from "@/lib/data-paths"
 
 interface MonthlyActivity {
   month: string // YYYY-MM format
@@ -26,33 +29,27 @@ async function fetchDiscordContributions(userId: string): Promise<Map<string, Se
   const monthlyActiveDays = new Map<string, Set<string>>()
 
   try {
-    let baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL || process.env.BASE_URL || "http://localhost:3000"
-
-    // Add protocol if not present
-    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
-      baseUrl = `https://${baseUrl}`
-    }
-
-    // First, get the contributor's username from contributors.json
-    const contributorsRes = await fetch(`${baseUrl}/data/contributors.json`, {
-      next: { revalidate: 3600 },
-    })
-
-    if (!contributorsRes.ok) return monthlyActiveDays
-
-    const contributorsData = await contributorsRes.json()
-    const contributor = contributorsData.contributors?.find((c: any) => c.id === userId)
-
+    const contributorsPath = path.join(
+      DATA_DIR,
+      "latest",
+      "generated",
+      "contributors.json"
+    )
+    if (!fs.existsSync(contributorsPath)) return monthlyActiveDays
+    const contributorsData = JSON.parse(fs.readFileSync(contributorsPath, "utf-8"))
+    const contributor = contributorsData.contributors?.find(
+      (c: any) => c.id === userId
+    )
     if (!contributor) return monthlyActiveDays
 
-    // Fetch the user's profile data
-    const profileRes = await fetch(`${baseUrl}/data/generated/profiles/${contributor.username}.json`, {
-      next: { revalidate: 3600 },
-    })
-
-    if (!profileRes.ok) return monthlyActiveDays
-
-    const profile = await profileRes.json()
+    const profilePath = path.join(
+      DATA_DIR,
+      "generated",
+      "profiles",
+      `${contributor.username}.json`
+    )
+    if (!fs.existsSync(profilePath)) return monthlyActiveDays
+    const profile = JSON.parse(fs.readFileSync(profilePath, "utf-8"))
     const contributions = profile.contributions || []
 
     for (const contribution of contributions) {

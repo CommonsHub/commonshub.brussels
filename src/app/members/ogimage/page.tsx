@@ -3,13 +3,12 @@ export default async function OGImageTestPage() {
   let totalMembers = 0
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
-    const response = await fetch(`${baseUrl}/data/contributors.json`, {
-      next: { revalidate: 3600 },
-    })
-
-    if (response.ok) {
-      const data = await response.json()
+    const fs = await import("fs")
+    const path = await import("path")
+    const { DATA_DIR } = await import("@/lib/data-paths")
+    const filePath = path.join(DATA_DIR, "latest", "generated", "contributors.json")
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8"))
       contributors = data.contributors || []
       totalMembers = data.totalMembers || 0
     }

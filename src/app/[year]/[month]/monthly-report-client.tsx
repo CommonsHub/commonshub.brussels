@@ -92,7 +92,7 @@ export function MonthlyReportClient() {
 
     // Fetch images and report data in parallel
     Promise.all([
-      fetch(`/data/${year}/${month}/generated/images.json`),
+      fetch(`/api/images?year=${year}&month=${month}`),
       fetch(`/api/reports/${year}/${month}`)
     ])
       .then(async ([imagesRes, reportRes]) => {

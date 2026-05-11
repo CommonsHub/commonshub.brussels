@@ -71,7 +71,7 @@ export function CommunityActivityGallery({
       messageId: string;
       channelId: string;
     }>;
-  }>(`/data/latest/generated/images.json`, fetcher);
+  }>(`/api/images`, fetcher);
 
   // Filter images by channelId
   const channelImages = (data?.images || []).filter(

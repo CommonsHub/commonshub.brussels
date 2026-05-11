@@ -40,7 +40,7 @@ export function CommunityActivityGrid({ onMonthSelect }: CommunityActivityGridPr
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(`/data/activitygrid.json`)
+        const res = await fetch(`/api/activitygrid`)
         if (!res.ok) throw new Error("Failed to fetch")
         const json: ActivityGridData = await res.json()
 

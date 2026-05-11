@@ -29,11 +29,12 @@ export default async function Image() {
   // Fetch contributors
   let contributors: any[] = [];
   try {
-    const response = await fetch(`${BASE_URL}/data/contributors.json`, {
-      cache: "no-store",
-    });
-    if (response.ok) {
-      const data = await response.json();
+    const fs = await import("fs");
+    const path = await import("path");
+    const { DATA_DIR } = await import("@/lib/data-paths");
+    const filePath = path.join(DATA_DIR, "latest", "generated", "contributors.json");
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
       contributors = data.contributors || [];
     }
   } catch (error) {

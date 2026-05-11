@@ -3,39 +3,6 @@ import roomsData from "@/settings/rooms.json";
 
 const BASE_URL = "https://commonshub.brussels";
 
-// Generate data URLs for available months
-function getDataUrls(): MetadataRoute.Sitemap {
-  const urls: MetadataRoute.Sitemap = [];
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-
-  // Start from June 2024 (Commons Hub opening)
-  const startYear = 2024;
-  const startMonth = 6;
-
-  for (let year = startYear; year <= currentYear; year++) {
-    const monthStart = year === startYear ? startMonth : 1;
-    const monthEnd = year === currentYear ? currentMonth : 12;
-
-    for (let month = monthStart; month <= monthEnd; month++) {
-      const monthStr = String(month).padStart(2, "0");
-      const files = ["contributors", "transactions", "events", "members"];
-
-      for (const file of files) {
-        urls.push({
-          url: `${BASE_URL}/data/${year}/${monthStr}/${file}.json`,
-          lastModified: now,
-          changeFrequency: "daily",
-          priority: 0.3,
-        });
-      }
-    }
-  }
-
-  return urls;
-}
-
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
@@ -153,8 +120,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
     }));
 
-  // Data URLs for each month
-  const dataUrls = getDataUrls();
-
-  return [...staticPages, ...roomPages, ...roomIcsPages, ...dataUrls];
+  return [...staticPages, ...roomPages, ...roomIcsPages];
 }

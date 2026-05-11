@@ -41,8 +41,8 @@ export function OtherMembers() {
     async function load() {
       try {
         const [mRes, cRes] = await Promise.all([
-          fetch("/data/latest/generated/members.json"),
-          fetch("/data/latest/generated/contributors.json"),
+          fetch("/api/members"),
+          fetch("/api/contributors"),
         ]);
         if (mRes.ok) {
           const m: MembersFile = await mRes.json();

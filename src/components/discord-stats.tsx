@@ -14,7 +14,7 @@ export function DiscordStatsDisplay() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const response = await fetch("/data/latest/generated/contributors.json")
+        const response = await fetch("/api/contributors")
         const data = await response.json()
         setStats({
           totalMembers: data.summary?.totalDiscordMembers || 0,

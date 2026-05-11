@@ -53,7 +53,7 @@ export function RecentContributors() {
   useEffect(() => {
     async function fetchRecentContributors() {
       try {
-        const response = await fetch("/data/latest/generated/contributors.json")
+        const response = await fetch("/api/contributors")
         if (response.ok) {
           const data = await response.json()
           setContributorsData(data)

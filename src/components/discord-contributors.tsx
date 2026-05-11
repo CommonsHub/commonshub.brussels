@@ -35,7 +35,7 @@ export function DiscordContributors({ filterUserIds, selectedMonth }: DiscordCon
   useEffect(() => {
     async function fetchContributors() {
       try {
-        const response = await fetch("/data/latest/generated/contributors.json")
+        const response = await fetch("/api/contributors")
         const result = await response.json()
         // Map generated data shape to component's expected shape
         const contributors = (result.contributors || []).map((c: any) => ({
@@ -156,7 +156,7 @@ export function DiscordStats() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await fetch("/data/latest/generated/contributors.json")
+        const response = await fetch("/api/contributors")
         const result = await response.json()
         setData(result)
       } catch (error) {
@@ -185,7 +185,7 @@ export function useDiscordStats() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await fetch("/data/latest/generated/contributors.json")
+        const response = await fetch("/api/contributors")
         const result = await response.json()
         setStats({
           totalMembers: result.summary?.totalContributors || 0,

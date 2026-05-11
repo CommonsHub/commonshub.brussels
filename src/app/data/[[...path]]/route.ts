@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
+import { timingSafeEqual } from "crypto";
 import { DATA_DIR } from "@/lib/data-paths";
 
 const YEAR_RE = /^\d{4}$/;
@@ -64,6 +65,9 @@ export async function GET(
   { params }: { params: Promise<{ path?: string[] }> }
 ) {
   try {
+    const authResult = checkBasicAuth(request);
+    if (authResult) return authResult;
+
     const segments = (await params).path ?? [];
     const resolved = resolve(segments);
     if (!resolved) {
@@ -80,6 +84,69 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+/**
+ * Gate every /data/* response behind HTTP Basic Auth. Returns a response to
+ * short-circuit the handler when auth is missing/invalid, or null to continue.
+ */
+function checkBasicAuth(request: NextRequest): NextResponse | null {
+  const expected = process.env.ADMIN_PASSWORD;
+  if (!expected) {
+    return new NextResponse(
+      "ADMIN_PASSWORD environment variable is not set on the server. " +
+        "Set it (e.g. in .env) to enable access to /data/*.",
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
+
+  const header = request.headers.get("authorization") ?? "";
+  if (header.startsWith("Basic ")) {
+    try {
+      const decoded = Buffer.from(header.slice(6).trim(), "base64").toString(
+        "utf-8"
+      );
+      const sepIndex = decoded.indexOf(":");
+      const user = sepIndex >= 0 ? decoded.slice(0, sepIndex) : decoded;
+      const pass = sepIndex >= 0 ? decoded.slice(sepIndex + 1) : "";
+      if (user === "admin" && constantTimeEqual(pass, expected)) {
+        return null;
+      }
+    } catch {
+      // fall through to 401
+    }
+  }
+
+  return new NextResponse("Authentication required", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Basic realm="commonshub-data", charset="UTF-8"',
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf-8");
+  const bb = Buffer.from(b, "utf-8");
+  if (ab.length !== bb.length) {
+    // still spend the comparison cost to avoid leaking length via timing
+    const max = Math.max(ab.length, bb.length);
+    const padA = Buffer.alloc(max);
+    const padB = Buffer.alloc(max);
+    ab.copy(padA);
+    bb.copy(padB);
+    timingSafeEqual(padA, padB);
+    return false;
+  }
+  return timingSafeEqual(ab, bb);
 }
 
 function renderRoot(): NextResponse {

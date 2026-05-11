@@ -79,7 +79,7 @@ export default function YearEventsPage() {
 
       for (const month of months) {
         try {
-          const response = await fetch(`/data/${year}/${month}/events.json`);
+          const response = await fetch(`/api/events/months/${year}/${month}`);
           if (response.ok) {
             const data: MonthEvents = await response.json();
             allEvents.push(...data.events);

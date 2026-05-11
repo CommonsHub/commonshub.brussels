@@ -57,8 +57,8 @@ export default function ContributionsPage() {
       try {
         // Fetch images and contributors data in parallel
         const [imagesResponse, contributorsResponse] = await Promise.all([
-          fetch("/data/latest/generated/images.json"),
-          fetch("/data/contributors.json")
+          fetch("/api/images"),
+          fetch("/api/contributors")
         ])
 
         const imagesData = await imagesResponse.json()
