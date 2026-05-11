@@ -11,8 +11,8 @@ export async function GET(
     const { path: pathSegments } = await params;
     const requestedPath = pathSegments.join("/");
 
-    // Security: Block access to private paths
-    if (requestedPath.includes("/private/")) {
+    // Security: Block access to private paths (any segment named "private")
+    if (pathSegments.some((seg) => seg === "private")) {
       return NextResponse.json(
         { error: "Access to private data is not allowed" },
         { status: 403 }
@@ -40,13 +40,10 @@ export async function GET(
       );
     }
 
-    // Check if it's a directory (not allowed)
+    // If it's a directory, render a browsable index of its public entries.
     const stats = fs.statSync(filePath);
     if (stats.isDirectory()) {
-      return NextResponse.json(
-        { error: "Directory listing not allowed" },
-        { status: 403 }
-      );
+      return renderDirectoryListing(filePath, pathSegments);
     }
 
     // Read the file
@@ -91,4 +88,85 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" :
+    c === "<" ? "&lt;" :
+    c === ">" ? "&gt;" :
+    c === "\"" ? "&quot;" : "&#39;"
+  );
+}
+
+function renderDirectoryListing(dirPath: string, pathSegments: string[]): NextResponse {
+  const entries = fs
+    .readdirSync(dirPath, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith(".") && e.name !== "private")
+    .sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const urlPrefix = "/data/" + pathSegments.map(encodeURIComponent).join("/");
+  const parentUrl =
+    pathSegments.length > 1
+      ? "/data/" + pathSegments.slice(0, -1).map(encodeURIComponent).join("/")
+      : null;
+
+  const rows = entries.map((entry) => {
+    const isDir = entry.isDirectory();
+    const name = entry.name + (isDir ? "/" : "");
+    const href = `${urlPrefix}/${encodeURIComponent(entry.name)}`;
+    let size = "";
+    if (!isDir) {
+      try {
+        size = formatSize(fs.statSync(path.join(dirPath, entry.name)).size);
+      } catch {
+        size = "";
+      }
+    }
+    return `<tr><td><a href="${escapeHtml(href)}">${escapeHtml(name)}</a></td><td class="size">${size}</td></tr>`;
+  });
+
+  const title = `/data/${pathSegments.join("/")}`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Index of ${escapeHtml(title)}</title>
+<style>
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2rem; max-width: 60rem; margin: auto; }
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #eee; }
+  td.size { text-align: right; color: #888; width: 8rem; }
+  a { text-decoration: none; color: #0366d6; }
+  a:hover { text-decoration: underline; }
+  .up { margin-bottom: 0.5rem; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>Index of ${escapeHtml(title)}</h1>
+${parentUrl ? `<a class="up" href="${escapeHtml(parentUrl)}">../</a>` : ""}
+<table>
+${rows.join("\n")}
+</table>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
 }
