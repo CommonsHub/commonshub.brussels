@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import { DATA_DIR } from "@/lib/data-paths";
-import { ethereumAddressId } from "@/lib/nip73";
+import { ethereumAddressId, ethereumTxId } from "@/lib/nip73";
 import type {
   CounterpartiesFile,
   CounterpartyMetadata,
@@ -275,6 +275,7 @@ export default async function FinancePage({ params }: PageProps) {
       ...tx,
       moneriumOrder,
       transactionId,
+      transactionUri: ethereumTxId(account.chain, tx.hash) ?? undefined,
       transactionMetadata: metadata,
       counterpartyId,
       counterpartyMetadata,

@@ -21,6 +21,7 @@ import {
   counterpartyLabel,
   type CounterpartyMetadata,
 } from "@/types/counterparties";
+import { useNostr } from "@/components/nostr-provider";
 
 interface TransactionWithMonerium extends TokenTransfer {
   moneriumOrder?: MoneriumOrder;
@@ -37,6 +38,7 @@ interface TransactionMetadata {
 
 interface EnrichedTransaction extends TransactionWithMonerium {
   transactionId: string;
+  transactionUri?: string;
   transactionMetadata?: TransactionMetadata;
   counterpartyId?: string;
   counterpartyMetadata?: CounterpartyMetadata;
@@ -136,6 +138,46 @@ export function FinanceTransactionTable({
 }: FinanceTransactionTableProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { publish, watch, getAnnotation } = useNostr();
+
+  // Subscribe to every NIP-73 URI on this page so we receive annotation
+  // events from the relay (and trigger re-renders when they merge in).
+  useEffect(() => {
+    for (const tx of transactions) {
+      if (tx.transactionUri) watch(tx.transactionUri);
+      if (tx.counterpartyId) watch(tx.counterpartyId);
+    }
+  }, [transactions, watch]);
+
+  // Merge baseline + nostr annotation for one row's tx metadata.
+  function effectiveTxMetadata(tx: EnrichedTransaction): TransactionMetadata {
+    const baseline = tx.transactionMetadata ?? {
+      collective: "commonshub",
+      project: null,
+      event: null,
+      category: "other",
+      tags: [],
+      description: "",
+    };
+    const ann = tx.transactionUri ? getAnnotation(tx.transactionUri) : undefined;
+    if (!ann) return baseline;
+    return {
+      ...baseline,
+      collective: ann.tagMap.collective ?? baseline.collective,
+      category: ann.tagMap.category ?? baseline.category,
+      description: ann.content || baseline.description,
+    };
+  }
+
+  // Merge baseline + nostr annotation for one row's counterparty metadata.
+  function effectiveCpMetadata(
+    tx: EnrichedTransaction
+  ): CounterpartyMetadata | undefined {
+    const baseline = tx.counterpartyMetadata;
+    const ann = tx.counterpartyId ? getAnnotation(tx.counterpartyId) : undefined;
+    if (!ann) return baseline;
+    return { ...(baseline ?? {}), ...ann.tagMap };
+  }
 
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(
     new Set()
@@ -580,33 +622,25 @@ export function FinanceTransactionTable({
 
     setIsBatchUpdating(true);
     try {
-      const updates: Partial<TransactionMetadata> = {};
-      if (batchCollective) updates.collective = batchCollective;
-      if (batchCategory) updates.category = batchCategory;
-      if (batchNote) updates.description = batchNote;
+      const tagPatch: Record<string, string> = {};
+      if (batchCollective) tagPatch.collective = batchCollective;
+      if (batchCategory) tagPatch.category = batchCategory;
 
-      // Update all selected transactions
-      await Promise.all(
-        Array.from(selectedTransactions).map(async (txId) => {
-          const response = await fetch(
-            `/api/transactions/${encodeURIComponent(txId)}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(updates),
-            }
-          );
-          if (!response.ok) {
-            throw new Error(`Failed to update transaction ${txId}`);
-          }
-        })
+      const selectedRows = transactions.filter(
+        (tx) => selectedTransactions.has(tx.transactionId) && tx.transactionUri
       );
 
-      // Reload the page to show updated data
-      window.location.reload();
+      await Promise.all(
+        selectedRows.map((tx) =>
+          publish(tx.transactionUri!, {
+            content: batchNote || undefined,
+            tags: tagPatch,
+          })
+        )
+      );
     } catch (error) {
       console.error("Error batch updating transactions:", error);
-      alert("Failed to update transactions");
+      alert("Failed to publish annotations");
     } finally {
       setIsBatchUpdating(false);
     }
@@ -644,10 +678,12 @@ export function FinanceTransactionTable({
       ];
 
       if (isAdmin) {
-        const collective = tx.transactionMetadata?.collective || "commonshub";
-        const category = tx.transactionMetadata?.category || "other";
-        const cpLabel = counterpartyLabel(tx.counterpartyMetadata);
-        const description = tx.transactionMetadata?.description || cpLabel;
+        const txMeta = effectiveTxMetadata(tx);
+        const cpMeta = effectiveCpMetadata(tx);
+        const collective = txMeta.collective || "commonshub";
+        const category = txMeta.category || "other";
+        const cpLabel = counterpartyLabel(cpMeta);
+        const description = txMeta.description || cpLabel;
         const counterparty = cpLabel || (isIncoming ? tx.from : tx.to);
 
         row.push(collective, category, description, counterparty);
@@ -907,6 +943,9 @@ export function FinanceTransactionTable({
               ? categoriesObj.credit || ["other"]
               : categoriesObj.debit || ["other"];
 
+            const txMeta = effectiveTxMetadata(tx);
+            const cpMeta = effectiveCpMetadata(tx);
+
             return (
               <tr
                 key={`${tx.hash}-${index}`}
@@ -994,20 +1033,11 @@ export function FinanceTransactionTable({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Select
-                        value={
-                          tx.transactionMetadata?.collective || "commonshub"
-                        }
-                        onValueChange={async (value) => {
-                          const response = await fetch(
-                            `/api/transactions/${encodeURIComponent(tx.transactionId)}`,
-                            {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ collective: value }),
-                            }
-                          );
-                          if (response.ok) {
-                            window.location.reload();
+                        value={txMeta.collective || "commonshub"}
+                        disabled={!tx.transactionUri}
+                        onValueChange={(value) => {
+                          if (tx.transactionUri) {
+                            publish(tx.transactionUri, { tags: { collective: value } });
                           }
                         }}
                       >
@@ -1032,18 +1062,11 @@ export function FinanceTransactionTable({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Select
-                        value={tx.transactionMetadata?.category || "other"}
-                        onValueChange={async (value) => {
-                          const response = await fetch(
-                            `/api/transactions/${encodeURIComponent(tx.transactionId)}`,
-                            {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ category: value }),
-                            }
-                          );
-                          if (response.ok) {
-                            window.location.reload();
+                        value={txMeta.category || "other"}
+                        disabled={!tx.transactionUri}
+                        onValueChange={(value) => {
+                          if (tx.transactionUri) {
+                            publish(tx.transactionUri, { tags: { category: value } });
                           }
                         }}
                       >
@@ -1088,19 +1111,11 @@ export function FinanceTransactionTable({
                     {isAdmin && tx.counterpartyId && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
-                          value={counterpartyLabel(tx.counterpartyMetadata)}
+                          value={counterpartyLabel(cpMeta)}
                           onSave={async (value) => {
-                            const response = await fetch(
-                              `/api/counterparties/${encodeURIComponent(tx.counterpartyId!)}`,
-                              {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ name: value }),
-                              }
-                            );
-                            if (!response.ok) {
-                              throw new Error("Failed to update counterparty");
-                            }
+                            await publish(tx.counterpartyId!, {
+                              tags: { name: value },
+                            });
                           }}
                           placeholder="add note"
                         />
@@ -1117,22 +1132,12 @@ export function FinanceTransactionTable({
                           : tx.moneriumOrder.memo}
                       </div>
                     )}
-                    {isAdmin && (
+                    {isAdmin && tx.transactionUri && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
-                          value={tx.transactionMetadata?.description || ""}
+                          value={txMeta.description || ""}
                           onSave={async (value) => {
-                            const response = await fetch(
-                              `/api/transactions/${encodeURIComponent(tx.transactionId)}`,
-                              {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ description: value }),
-                              }
-                            );
-                            if (!response.ok) {
-                              throw new Error("Failed to update transaction");
-                            }
+                            await publish(tx.transactionUri!, { content: value });
                           }}
                           placeholder="add note"
                         />

@@ -5,7 +5,7 @@ import { isAdmin } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import { DATA_DIR } from "@/lib/data-paths";
-import { counterpartyNip73Id } from "@/lib/nip73";
+import { counterpartyNip73Id, transactionNip73Id } from "@/lib/nip73";
 import type {
   CounterpartiesFile,
   CounterpartyMetadata,
@@ -191,6 +191,7 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
   // Augment transactions with counterparty metadata and Monerium data
   const augmentedTransactions = transactions.map((tx) => {
     const counterpartyId = counterpartyNip73Id(tx) ?? undefined;
+    const transactionUri = transactionNip73Id(tx) ?? undefined;
     const counterpartyMetadata = counterpartyId
       ? counterpartyMetadataMap.get(counterpartyId)
       : undefined;
@@ -203,6 +204,7 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
     return {
       ...tx,
       transactionId: tx.id,
+      transactionUri,
       counterpartyId,
       counterpartyMetadata,
       moneriumOrder,

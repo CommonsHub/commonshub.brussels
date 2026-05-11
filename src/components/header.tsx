@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Logo } from "./logo";
 import { Button } from "@/components/ui/button";
 import { AuthButton } from "@/components/auth-button";
+import { NostrOutboxBadge } from "@/components/nostr-outbox-badge";
 import { Menu, X, LogOut, Coins } from "lucide-react";
 import { useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -79,6 +80,7 @@ export function Header() {
             <Button asChild>
               <Link href="/rooms">Book Space</Link>
             </Button>
+            <NostrOutboxBadge />
             <AuthButton />
           </div>
 

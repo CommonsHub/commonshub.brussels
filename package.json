@@ -74,6 +74,7 @@
     "next-auth": "^5.0.0-beta.30",
     "next-themes": "latest",
     "node-ical": "^0.22.1",
+    "nostr-tools": "^2.23.3",
     "open-graph-scraper": "^6.11.0",
     "path": "latest",
     "react": "19.2.3",
