@@ -177,6 +177,7 @@ function renderDeep(
     headers: {
       "Content-Type": contentType,
       "Cache-Control": isLocalDev ? "no-store, max-age=0" : "public, max-age=3600",
+      "X-Robots-Tag": "noindex, nofollow, noarchive",
     },
   });
 }
@@ -227,6 +228,7 @@ function renderListing(
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow, noarchive">
 <title>Index of ${escapeHtml(url)}</title>
 <style>
   body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2rem; max-width: 60rem; margin: auto; }
@@ -252,6 +254,7 @@ ${entries.length === 0 ? '<p class="empty">(empty)</p>' : `<table>${rows}</table
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store, max-age=0",
+      "X-Robots-Tag": "noindex, nofollow, noarchive",
     },
   });
 }
