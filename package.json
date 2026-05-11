@@ -14,12 +14,6 @@
     "status": "scripts/check-status.sh",
     "test": "jest",
     "test:ci": "jest --ci --coverage",
-    "test:luma": "jest tests/luma.test.ts",
-    "test:generate-events": "jest tests/generate-events.test.ts",
-    "test:generate-transactions": "jest tests/generate-transactions.test.ts",
-    "test:image-proxy": "jest tests/image-proxy-integration.test.ts",
-    "test:fetch-transactions": "jest tests/fetch-transactions.test.ts",
-    "test:featured-photos": "tsx tests/featured-photos-filter.test.ts",
     "verify-no-private-data": "./scripts/verify-no-private-data.sh"
   },
   "dependencies": {
