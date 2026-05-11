@@ -9,4 +9,3 @@ dist/
 */private/*
 data/
 !src/app/data
-!tests/data/
