@@ -4,6 +4,12 @@ import * as path from "path";
 import { isAdmin } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
+import { DATA_DIR } from "@/lib/data-paths";
+import { counterpartyNip73Id } from "@/lib/nip73";
+import type {
+  CounterpartiesFile,
+  CounterpartyMetadata,
+} from "@/types/counterparties";
 
 interface PageProps {
   params: Promise<{
@@ -44,28 +50,11 @@ interface TransactionsFile {
   transactions: Transaction[];
 }
 
-interface CounterpartyMetadata {
-  description: string;
-  type: "organisation" | "individual" | null;
-}
-
-interface Counterparty {
-  id: string;
-  metadata: CounterpartyMetadata;
-}
-
-interface CounterpartiesFile {
-  month: string;
-  generatedAt: string;
-  counterparties: Counterparty[];
-}
-
 /**
  * Load all transactions from consolidated files for a year
  */
 async function loadAllYearlyTransactions(year: string): Promise<Transaction[]> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
 
   if (!fs.existsSync(yearPath)) {
     return [];
@@ -73,7 +62,6 @@ async function loadAllYearlyTransactions(year: string): Promise<Transaction[]> {
 
   const allTransactions: Transaction[] = [];
 
-  // Get all month directories
   const monthDirs = fs
     .readdirSync(yearPath, { withFileTypes: true })
     .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name))
@@ -81,7 +69,7 @@ async function loadAllYearlyTransactions(year: string): Promise<Transaction[]> {
     .sort();
 
   for (const month of monthDirs) {
-    const filePath = path.join(dataDir, year, month, "transactions.json");
+    const filePath = path.join(DATA_DIR, year, month, "generated", "transactions.json");
 
     if (fs.existsSync(filePath)) {
       try {
@@ -101,8 +89,7 @@ async function loadAllYearlyTransactions(year: string): Promise<Transaction[]> {
  * Load counterparty metadata from all months
  */
 async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string, CounterpartyMetadata>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
   const metadataMap = new Map<string, CounterpartyMetadata>();
 
   if (!fs.existsSync(yearPath)) {
@@ -116,15 +103,14 @@ async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string,
     .sort();
 
   for (const month of monthDirs) {
-    const filePath = path.join(dataDir, year, month, "counterparties.json");
+    const filePath = path.join(DATA_DIR, year, month, "generated", "counterparties.json");
 
     if (fs.existsSync(filePath)) {
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         const data: CounterpartiesFile = JSON.parse(content);
-
-        for (const cp of data.counterparties) {
-          metadataMap.set(cp.id, cp.metadata);
+        for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
+          metadataMap.set(id, meta);
         }
       } catch (error) {
         console.error(`Error reading counterparty metadata for ${year}-${month}:`, error);
@@ -139,8 +125,7 @@ async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string,
  * Load Monerium orders from all months
  */
 async function loadYearlyMoneriumOrders(year: string): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
   const ordersMap = new Map<string, any>();
 
   if (!fs.existsSync(yearPath)) {
@@ -154,7 +139,7 @@ async function loadYearlyMoneriumOrders(year: string): Promise<Map<string, any>>
     .sort();
 
   for (const month of monthDirs) {
-    const moneriumDir = path.join(dataDir, year, month, "private", "monerium");
+    const moneriumDir = path.join(DATA_DIR, year, month, "private", "monerium");
 
     if (fs.existsSync(moneriumDir)) {
       const files = fs.readdirSync(moneriumDir);
@@ -205,10 +190,10 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
 
   // Augment transactions with counterparty metadata and Monerium data
   const augmentedTransactions = transactions.map((tx) => {
-    const counterpartyId = tx.provider === "stripe"
-      ? `stripe:${tx.counterparty}`
-      : `${tx.chain}:${tx.counterparty.toLowerCase()}`;
-    const counterpartyMetadata = counterpartyMetadataMap.get(counterpartyId);
+    const counterpartyId = counterpartyNip73Id(tx) ?? undefined;
+    const counterpartyMetadata = counterpartyId
+      ? counterpartyMetadataMap.get(counterpartyId)
+      : undefined;
 
     // Get Monerium order if available
     const moneriumOrder = tx.txHash

@@ -17,6 +17,10 @@ import { WalletAddress } from "@/components/wallet-address";
 import type { TokenTransfer } from "@/lib/etherscan";
 import type { MoneriumOrder } from "@/lib/monerium-node";
 import settings from "@/settings/settings.json";
+import {
+  counterpartyLabel,
+  type CounterpartyMetadata,
+} from "@/types/counterparties";
 
 interface TransactionWithMonerium extends TokenTransfer {
   moneriumOrder?: MoneriumOrder;
@@ -29,11 +33,6 @@ interface TransactionMetadata {
   category: string;
   tags: string[];
   description: string;
-}
-
-interface CounterpartyMetadata {
-  description: string;
-  type: "organisation" | "individual" | null;
 }
 
 interface EnrichedTransaction extends TransactionWithMonerium {
@@ -647,13 +646,9 @@ export function FinanceTransactionTable({
       if (isAdmin) {
         const collective = tx.transactionMetadata?.collective || "commonshub";
         const category = tx.transactionMetadata?.category || "other";
-        const description =
-          tx.transactionMetadata?.description ||
-          tx.counterpartyMetadata?.description ||
-          "";
-        const counterparty =
-          tx.counterpartyMetadata?.description ||
-          (isIncoming ? tx.from : tx.to);
+        const cpLabel = counterpartyLabel(tx.counterpartyMetadata);
+        const description = tx.transactionMetadata?.description || cpLabel;
+        const counterparty = cpLabel || (isIncoming ? tx.from : tx.to);
 
         row.push(collective, category, description, counterparty);
       }
@@ -1093,14 +1088,14 @@ export function FinanceTransactionTable({
                     {isAdmin && tx.counterpartyId && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
-                          value={tx.counterpartyMetadata?.description || ""}
+                          value={counterpartyLabel(tx.counterpartyMetadata)}
                           onSave={async (value) => {
                             const response = await fetch(
                               `/api/counterparties/${encodeURIComponent(tx.counterpartyId!)}`,
                               {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ description: value }),
+                                body: JSON.stringify({ name: value }),
                               }
                             );
                             if (!response.ok) {

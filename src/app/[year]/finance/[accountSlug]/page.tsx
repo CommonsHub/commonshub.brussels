@@ -9,6 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import { WalletAddress } from "@/components/wallet-address";
+import { DATA_DIR } from "@/lib/data-paths";
+import { ethereumAddressId } from "@/lib/nip73";
+import type {
+  CounterpartiesFile,
+  CounterpartyMetadata,
+} from "@/types/counterparties";
 
 interface PageProps {
   params: Promise<{
@@ -48,8 +54,7 @@ async function loadYearlyTransactions(
     return [];
   }
 
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
 
   if (!fs.existsSync(yearPath)) {
     return [];
@@ -66,7 +71,7 @@ async function loadYearlyTransactions(
 
   for (const month of monthDirs) {
     const filePath = path.join(
-      dataDir,
+      DATA_DIR,
       year,
       month,
       account.chain,
@@ -97,8 +102,7 @@ async function loadYearlyMoneriumOrders(
   year: string,
   address: string
 ): Promise<Map<string, MoneriumOrder>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
 
   const ordersByTxHash = new Map<string, MoneriumOrder>();
 
@@ -115,7 +119,7 @@ async function loadYearlyMoneriumOrders(
 
   for (const month of monthDirs) {
     const filePath = path.join(
-      dataDir,
+      DATA_DIR,
       year,
       month,
       "private",
@@ -149,8 +153,7 @@ async function loadYearlyMoneriumOrders(
  * Load transaction metadata from all months
  */
 async function loadYearlyTransactionMetadata(year: string): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
+  const yearPath = path.join(DATA_DIR, year);
   const metadataMap = new Map<string, any>();
 
   if (!fs.existsSync(yearPath)) {
@@ -164,7 +167,7 @@ async function loadYearlyTransactionMetadata(year: string): Promise<Map<string, 
     .sort();
 
   for (const month of monthDirs) {
-    const filePath = path.join(dataDir, year, month, "transactions.json");
+    const filePath = path.join(DATA_DIR, year, month, "generated", "transactions.json");
 
     if (fs.existsSync(filePath)) {
       try {
@@ -189,10 +192,9 @@ async function loadYearlyTransactionMetadata(year: string): Promise<Map<string, 
 /**
  * Load counterparty metadata from all months
  */
-async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const yearPath = path.join(dataDir, year);
-  const metadataMap = new Map<string, any>();
+async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string, CounterpartyMetadata>> {
+  const yearPath = path.join(DATA_DIR, year);
+  const metadataMap = new Map<string, CounterpartyMetadata>();
 
   if (!fs.existsSync(yearPath)) {
     return metadataMap;
@@ -205,15 +207,14 @@ async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string,
     .sort();
 
   for (const month of monthDirs) {
-    const filePath = path.join(dataDir, year, month, "counterparties.json");
+    const filePath = path.join(DATA_DIR, year, month, "generated", "counterparties.json");
 
     if (fs.existsSync(filePath)) {
       try {
         const content = fs.readFileSync(filePath, "utf-8");
-        const data = JSON.parse(content);
-
-        for (const cp of data.counterparties || []) {
-          metadataMap.set(cp.id, cp.metadata);
+        const data: CounterpartiesFile = JSON.parse(content);
+        for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
+          metadataMap.set(id, meta);
         }
       } catch (error) {
         console.error(`Error reading counterparty metadata for ${year}-${month}:`, error);
@@ -304,8 +305,10 @@ export default async function YearlyFinancePage({ params }: PageProps) {
     // Determine counterparty
     const isIncoming = tx.to.toLowerCase() === account.address.toLowerCase();
     const counterpartyAddress = isIncoming ? tx.from : tx.to;
-    const counterpartyId = `${account.chain}:${counterpartyAddress.toLowerCase()}`;
-    const counterpartyMetadata = counterpartyMetadataMap.get(counterpartyId);
+    const counterpartyId = ethereumAddressId(account.chain, counterpartyAddress) ?? undefined;
+    const counterpartyMetadata = counterpartyId
+      ? counterpartyMetadataMap.get(counterpartyId)
+      : undefined;
 
     return {
       ...tx,

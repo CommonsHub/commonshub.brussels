@@ -4,6 +4,12 @@ import * as path from "path";
 import { isAdmin } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
+import { DATA_DIR } from "@/lib/data-paths";
+import { counterpartyNip73Id } from "@/lib/nip73";
+import type {
+  CounterpartiesFile,
+  CounterpartyMetadata,
+} from "@/types/counterparties";
 
 interface PageProps {
   params: Promise<{
@@ -45,28 +51,11 @@ interface TransactionsFile {
   transactions: Transaction[];
 }
 
-interface CounterpartyMetadata {
-  description: string;
-  type: "organisation" | "individual" | null;
-}
-
-interface Counterparty {
-  id: string;
-  metadata: CounterpartyMetadata;
-}
-
-interface CounterpartiesFile {
-  month: string;
-  generatedAt: string;
-  counterparties: Counterparty[];
-}
-
 /**
  * Load all transactions from consolidated file for a month
  */
 async function loadAllMonthlyTransactions(year: string, month: string): Promise<Transaction[]> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const filePath = path.join(dataDir, year, month, "transactions.json");
+  const filePath = path.join(DATA_DIR, year, month, "generated", "transactions.json");
 
   if (!fs.existsSync(filePath)) {
     return [];
@@ -86,18 +75,15 @@ async function loadAllMonthlyTransactions(year: string, month: string): Promise<
  * Load counterparty metadata for a month
  */
 async function loadMonthlyCounterpartyMetadata(year: string, month: string): Promise<Map<string, CounterpartyMetadata>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const metadataMap = new Map<string, CounterpartyMetadata>();
-
-  const filePath = path.join(dataDir, year, month, "counterparties.json");
+  const filePath = path.join(DATA_DIR, year, month, "generated", "counterparties.json");
 
   if (fs.existsSync(filePath)) {
     try {
       const content = fs.readFileSync(filePath, "utf-8");
       const data: CounterpartiesFile = JSON.parse(content);
-
-      for (const cp of data.counterparties) {
-        metadataMap.set(cp.id, cp.metadata);
+      for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
+        metadataMap.set(id, meta);
       }
     } catch (error) {
       console.error(`Error reading counterparty metadata for ${year}-${month}:`, error);
@@ -111,10 +97,9 @@ async function loadMonthlyCounterpartyMetadata(year: string, month: string): Pro
  * Load Monerium orders for a month
  */
 async function loadMonthlyMoneriumOrders(year: string, month: string): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const ordersMap = new Map<string, any>();
 
-  const moneriumDir = path.join(dataDir, year, month, "private", "monerium");
+  const moneriumDir = path.join(DATA_DIR, year, month, "private", "monerium");
 
   if (fs.existsSync(moneriumDir)) {
     const files = fs.readdirSync(moneriumDir);
@@ -164,10 +149,10 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
 
   // Augment transactions with counterparty metadata and Monerium data
   const augmentedTransactions = transactions.map((tx) => {
-    const counterpartyId = tx.provider === "stripe"
-      ? `stripe:${tx.counterparty}`
-      : `${tx.chain}:${tx.counterparty.toLowerCase()}`;
-    const counterpartyMetadata = counterpartyMetadataMap.get(counterpartyId);
+    const counterpartyId = counterpartyNip73Id(tx) ?? undefined;
+    const counterpartyMetadata = counterpartyId
+      ? counterpartyMetadataMap.get(counterpartyId)
+      : undefined;
 
     // Get Monerium order if available
     const moneriumOrder = tx.txHash

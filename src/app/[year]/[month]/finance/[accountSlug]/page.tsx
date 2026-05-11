@@ -9,6 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
+import { DATA_DIR } from "@/lib/data-paths";
+import { ethereumAddressId } from "@/lib/nip73";
+import type {
+  CounterpartiesFile,
+  CounterpartyMetadata,
+} from "@/types/counterparties";
 
 interface PageProps {
   params: Promise<{
@@ -39,9 +45,8 @@ async function loadTransactions(
     return null;
   }
 
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const filePath = path.join(
-    dataDir,
+    DATA_DIR,
     year,
     month,
     account.chain,
@@ -71,9 +76,8 @@ async function loadMoneriumOrders(
   month: string,
   address: string
 ): Promise<Map<string, MoneriumOrder>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const filePath = path.join(
-    dataDir,
+    DATA_DIR,
     year,
     month,
     "private",
@@ -115,8 +119,7 @@ async function loadTransactionMetadata(
   year: string,
   month: string
 ): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const filePath = path.join(dataDir, year, month, "transactions.json");
+  const filePath = path.join(DATA_DIR, year, month, "generated", "transactions.json");
 
   const metadataMap = new Map<string, any>();
 
@@ -147,11 +150,10 @@ async function loadTransactionMetadata(
 async function loadCounterpartyMetadata(
   year: string,
   month: string
-): Promise<Map<string, any>> {
-  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-  const filePath = path.join(dataDir, year, month, "counterparties.json");
+): Promise<Map<string, CounterpartyMetadata>> {
+  const filePath = path.join(DATA_DIR, year, month, "generated", "counterparties.json");
 
-  const metadataMap = new Map<string, any>();
+  const metadataMap = new Map<string, CounterpartyMetadata>();
 
   if (!fs.existsSync(filePath)) {
     return metadataMap;
@@ -159,10 +161,9 @@ async function loadCounterpartyMetadata(
 
   try {
     const content = fs.readFileSync(filePath, "utf-8");
-    const data = JSON.parse(content);
-
-    for (const cp of data.counterparties || []) {
-      metadataMap.set(cp.id, cp.metadata);
+    const data: CounterpartiesFile = JSON.parse(content);
+    for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
+      metadataMap.set(id, meta);
     }
   } catch (error) {
     console.error("Error reading counterparty metadata:", error);
@@ -265,8 +266,10 @@ export default async function FinancePage({ params }: PageProps) {
     // Determine counterparty
     const isIncoming = tx.to.toLowerCase() === account.address.toLowerCase();
     const counterpartyAddress = isIncoming ? tx.from : tx.to;
-    const counterpartyId = `${account.chain}:${counterpartyAddress.toLowerCase()}`;
-    const counterpartyMetadata = counterpartyMetadataMap.get(counterpartyId);
+    const counterpartyId = ethereumAddressId(account.chain, counterpartyAddress) ?? undefined;
+    const counterpartyMetadata = counterpartyId
+      ? counterpartyMetadataMap.get(counterpartyId)
+      : undefined;
 
     return {
       ...tx,
