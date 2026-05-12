@@ -220,8 +220,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
       ws.onopen = () => {
         updateSubscription();
-        // flush any outbox items now that we're online
-        flushOutbox();
+        // Outbox is only flushed when the user clicks "Sync now" in the
+        // outbox modal — don't auto-publish on reconnect.
       };
       ws.onmessage = (evt) => {
         try {
@@ -357,9 +357,10 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         item,
       ];
       setOutbox(outboxRef.current);
-      await flushOutbox();
+      // No auto-flush — events stay in the outbox until the user
+      // explicitly clicks "Sync now".
     },
-    [secretKey, flushOutbox]
+    [secretKey]
   );
 
   const watch = useCallback(
