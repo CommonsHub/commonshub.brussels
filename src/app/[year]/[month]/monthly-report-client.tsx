@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ReportNotAvailable } from "@/components/report-not-available";
+import { ActiveMembersInfo } from "@/components/active-members-info";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -166,6 +167,7 @@ export function MonthlyReportClient() {
             <CardDescription className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Active Members
+              <ActiveMembersInfo />
             </CardDescription>
           </CardHeader>
           <CardContent>

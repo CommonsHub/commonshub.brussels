@@ -277,7 +277,7 @@ export function readDiscordMessages(
   year: string,
   month: string
 ): CachedMessage[] {
-  const discordDir = path.join(DATA_DIR, year, month, "messages", "discord");
+  const discordDir = path.join(DATA_DIR, year, month, "sources", "discord");
 
   if (!fs.existsSync(discordDir)) {
     return [];
