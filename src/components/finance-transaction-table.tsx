@@ -46,9 +46,41 @@ interface EnrichedTransaction extends TransactionWithMonerium {
   accountSlug?: string;
   normalizedAmount?: number;
   amount?: number;
+  grossAmount?: number;
+  netAmount?: number;
   currency?: string;
+  provider?: "etherscan" | "stripe" | string;
+  chain?: string | null;
+  stripeChargeId?: string;
   type?: "CREDIT" | "DEBIT";
   timestamp?: number;
+}
+
+const CHAIN_EXPLORERS: Record<string, string> = {
+  gnosis: "https://gnosisscan.io",
+  celo: "https://celoscan.io",
+  ethereum: "https://etherscan.io",
+};
+
+function txExplorerUrl(
+  tx: EnrichedTransaction,
+  fallbackChain: string
+): string | null {
+  if (tx.provider === "stripe") {
+    if (tx.counterpartyId?.startsWith("stripe:customer:")) {
+      const cusId = tx.counterpartyId.slice("stripe:customer:".length);
+      return `https://dashboard.stripe.com/customers/${cusId}`;
+    }
+    if (tx.stripeChargeId) {
+      return `https://dashboard.stripe.com/payments/${tx.stripeChargeId}`;
+    }
+    return null;
+  }
+  const chain = tx.chain || fallbackChain;
+  const base = chain ? CHAIN_EXPLORERS[chain] : undefined;
+  const hash = tx.hash;
+  if (!base || !hash) return null;
+  return `${base}/tx/${hash}`;
 }
 
 interface FinanceTransactionTableProps {
@@ -73,7 +105,8 @@ const EUR_SYMBOLS = new Set(["EUR", "EURe", "EURb"]);
 function formatRowAmount(
   tx: EnrichedTransaction,
   fallbackSymbol: string,
-  fallbackDecimals: number
+  fallbackDecimals: number,
+  explicitValue?: number
 ): { value: string; suffix: string } {
   const currency = tx.currency || fallbackSymbol || "";
   const isEur = EUR_SYMBOLS.has(currency);
@@ -81,7 +114,8 @@ function formatRowAmount(
   // tx.amount/normalizedAmount are already decoded (EUR or token units).
   // For old single-account views without those, fall back to raw value/decimals.
   let decoded: number | undefined;
-  if (typeof tx.amount === "number") decoded = tx.amount;
+  if (typeof explicitValue === "number") decoded = explicitValue;
+  else if (typeof tx.amount === "number") decoded = tx.amount;
   else if (typeof tx.normalizedAmount === "number") decoded = tx.normalizedAmount;
 
   let formatted: string;
@@ -799,7 +833,12 @@ export function FinanceTransactionTable({
       const isIncoming = useNormalizedAmount
         ? tx.type === "CREDIT"
         : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
-      const a = formatRowAmount(tx, tokenSymbol, tokenDecimals);
+      const a = formatRowAmount(
+        tx,
+        tokenSymbol,
+        tokenDecimals,
+        typeof tx.grossAmount === "number" ? tx.grossAmount : undefined
+      );
       const amount = a.suffix ? `${a.value} ${a.suffix}` : a.value;
 
       const row = [
@@ -1140,17 +1179,29 @@ export function FinanceTransactionTable({
                   </td>
                 )}
                 <td className="py-2.5 px-4">
-                  <a
-                    href={`https://gnosisscan.io/tx/${tx.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline"
-                  >
-                    <div className="font-medium">{dateStr}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {timeStr}
-                    </div>
-                  </a>
+                  {(() => {
+                    const href = txExplorerUrl(tx, chain);
+                    const inner = (
+                      <>
+                        <div className="font-medium">{dateStr}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {timeStr}
+                        </div>
+                      </>
+                    );
+                    return href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <div>{inner}</div>
+                    );
+                  })()}
                 </td>
                 {showAccountColumn && (
                   <td className="py-2.5 px-4">
@@ -1169,20 +1220,42 @@ export function FinanceTransactionTable({
                 </td>
                 <td className="py-2.5 px-4">
                   {(() => {
-                    const a = formatRowAmount(tx, tokenSymbol, tokenDecimals);
+                    const hasGross = typeof tx.grossAmount === "number";
+                    const hasNet = typeof tx.netAmount === "number";
+                    const grossVal = hasGross ? tx.grossAmount : undefined;
+                    const netVal = hasNet ? tx.netAmount : undefined;
+                    const showNet =
+                      hasGross && hasNet && tx.grossAmount !== tx.netAmount;
+
+                    const gross = formatRowAmount(
+                      tx,
+                      tokenSymbol,
+                      tokenDecimals,
+                      grossVal
+                    );
+                    const net = showNet
+                      ? formatRowAmount(tx, tokenSymbol, tokenDecimals, netVal)
+                      : null;
+
                     return (
                       <>
                         <div
                           className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
                         >
                           {isIncoming ? "+" : "-"}
-                          {a.value}
+                          {gross.value}
                         </div>
-                        {a.suffix && (
+                        {net ? (
                           <div className="text-xs text-muted-foreground">
-                            {a.suffix}
+                            net: {isIncoming ? "+" : "-"}
+                            {net.value}
+                            {net.suffix ? ` ${net.suffix}` : ""}
                           </div>
-                        )}
+                        ) : gross.suffix ? (
+                          <div className="text-xs text-muted-foreground">
+                            {gross.suffix}
+                          </div>
+                        ) : null}
                       </>
                     );
                   })()}
