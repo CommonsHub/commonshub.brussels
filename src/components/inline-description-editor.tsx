@@ -73,7 +73,11 @@ export function InlineDescriptionEditor({
     return (
       <button
         onClick={() => setIsEditing(true)}
-        className={`text-xs italic text-muted-foreground hover:text-foreground flex items-center gap-1 group ${className}`}
+        className={`flex items-center gap-1 group hover:text-foreground ${
+          displayValue
+            ? "text-foreground"
+            : "text-xs italic text-muted-foreground"
+        } ${className}`}
         disabled={isSaving}
       >
         {displayValue || placeholder}
@@ -92,7 +96,7 @@ export function InlineDescriptionEditor({
       onBlur={handleBlur}
       disabled={isSaving}
       placeholder={placeholder}
-      className={`text-xs italic border-b border-muted-foreground focus:border-foreground outline-none bg-transparent ${className}`}
+      className={`border-b border-muted-foreground focus:border-foreground outline-none bg-transparent ${className}`}
     />
   );
 }

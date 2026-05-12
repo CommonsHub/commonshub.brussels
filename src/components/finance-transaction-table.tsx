@@ -79,6 +79,34 @@ function typeLabel(
   }
 }
 
+function typeBadgeClass(
+  rawType: EnrichedTransaction["rawType"],
+  isIncoming: boolean
+): string {
+  switch (rawType) {
+    case "MINT":
+      // Strong green — fresh tokens entering circulation.
+      return "border-transparent bg-green-600 text-white";
+    case "BURN":
+      // Accent orange — tokens spent / consumed.
+      return "border-transparent bg-orange-500 text-white";
+    case "INTERNAL":
+      // Neutral — between our own accounts.
+      return "border-transparent bg-muted text-muted-foreground";
+    case "TRANSFER":
+      // Cool blue — peer-to-peer token movement.
+      return "border-transparent bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100";
+    case "CREDIT":
+    case "DEBIT":
+    default:
+      return isIncoming
+        ? // Pastel green — money in.
+          "border-transparent bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-100"
+        : // Pastel red — money out.
+          "border-transparent bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-100";
+  }
+}
+
 const CHAIN_EXPLORERS: Record<string, string> = {
   gnosis: "https://gnosisscan.io",
   celo: "https://celoscan.io",
@@ -1027,15 +1055,15 @@ export function FinanceTransactionTable({
               </th>
             )}
             <th className="text-left py-2 px-4 font-medium w-24">Date</th>
-            {showAccountColumn && (
-              <th className="text-left py-2 px-4 font-medium">Account</th>
-            )}
             <th className="text-left py-2 px-4 font-medium">Collective</th>
             <th className="text-left py-2 px-4 font-medium">Category</th>
             <th className="text-left py-2 px-4 font-medium">Type</th>
             <th className="text-left py-2 px-4 font-medium">Counterpart</th>
             <th className="text-left py-2 px-4 font-medium">Amount</th>
             <th className="text-left py-2 px-4 font-medium">Description</th>
+            {showAccountColumn && (
+              <th className="text-left py-2 px-4 font-medium">Account</th>
+            )}
           </tr>
           {/* Filter row */}
           <tr className="bg-muted/10 border-b">
@@ -1079,29 +1107,6 @@ export function FinanceTransactionTable({
                 </Select>
               )}
             </th>
-            {showAccountColumn && (
-              <th className="py-2 px-4">
-                <Select value={accountFilter} onValueChange={setAccountFilter}>
-                  <SelectTrigger className="h-7 text-xs w-full">
-                    <SelectValue placeholder="All accounts" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-xs">
-                      All accounts ({totals.count})
-                    </SelectItem>
-                    {uniqueAccounts.map((account) => (
-                      <SelectItem
-                        key={account}
-                        value={account}
-                        className="text-xs"
-                      >
-                        {account} ({filterCounts.accounts.get(account) || 0})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </th>
-            )}
             <th className="py-2 px-4">
               <Select
                 value={collectiveFilter}
@@ -1219,6 +1224,29 @@ export function FinanceTransactionTable({
                 />
               </div>
             </th>
+            {showAccountColumn && (
+              <th className="py-2 px-4">
+                <Select value={accountFilter} onValueChange={setAccountFilter}>
+                  <SelectTrigger className="h-7 text-xs w-full">
+                    <SelectValue placeholder="All accounts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All accounts ({totals.count})
+                    </SelectItem>
+                    {uniqueAccounts.map((account) => (
+                      <SelectItem
+                        key={account}
+                        value={account}
+                        className="text-xs"
+                      >
+                        {account} ({filterCounts.accounts.get(account) || 0})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1313,13 +1341,6 @@ export function FinanceTransactionTable({
                     })()}
                   </div>
                 </td>
-                {showAccountColumn && (
-                  <td className="py-2.5 px-4">
-                    <Badge variant="outline" className="text-xs">
-                      {tx.accountName}
-                    </Badge>
-                  </td>
-                )}
                 <td
                   className="py-2.5 px-4"
                   onClick={(e) => canEditRows && e.stopPropagation()}
@@ -1400,98 +1421,104 @@ export function FinanceTransactionTable({
                 </td>
                 <td className="py-2.5 px-4">
                   <Badge
-                    variant={isIncoming ? "default" : "secondary"}
-                    className="text-xs"
+                    className={`text-xs ${typeBadgeClass(tx.rawType, isIncoming)}`}
                   >
                     {typeLabel(tx.rawType, isIncoming)}
                   </Badge>
                 </td>
                 <td className="py-2.5 px-4">
-                  <div className="flex flex-col gap-1">
-                    {(() => {
-                      const cpName = counterpartyLabel(cpMeta);
-                      const cpAddr = addressFromUri(tx.counterpartyId);
-                      const cpExplorer = counterpartExplorerUrl(tx, chain);
+                  {(() => {
+                    const cpName = counterpartyLabel(cpMeta);
+                    const cpAddr = addressFromUri(tx.counterpartyId);
+                    const cpExplorer = counterpartExplorerUrl(tx, chain);
+                    const editable = canEditRows && !!tx.counterpartyId;
 
-                      // Stripe rows: no counterparty link unless chb emits a
-                      // stripe:customer:cus_X URI.
-                      if (tx.provider === "stripe") {
-                        if (!cpName && !cpExplorer) {
-                          return (
-                            <div className="text-xs text-muted-foreground">
-                              —
-                            </div>
-                          );
+                    const explorerIcon = cpExplorer ? (
+                      <a
+                        href={cpExplorer}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-muted-foreground hover:text-foreground"
+                        title={
+                          tx.provider === "stripe"
+                            ? "Open in Stripe"
+                            : "View address on block explorer"
                         }
-                        const label = cpName || "Customer";
-                        return cpExplorer ? (
-                          <a
-                            href={cpExplorer}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="font-medium hover:underline"
-                          >
-                            {label}
-                          </a>
-                        ) : (
-                          <div className="font-medium">{label}</div>
-                        );
-                      }
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : null;
 
-                      // Blockchain row.
-                      // - With a name: show name + small ExternalLink icon to
-                      //   the address on the block explorer.
-                      // - Without a name: show the WalletAddress (it already
-                      //   wraps the shortened address in its own explorer
-                      //   link, plus a copy button).
-                      if (cpName) {
+                    const renderEditor = (placeholder: string) => (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <InlineDescriptionEditor
+                          value={cpName}
+                          className="font-medium"
+                          placeholder={placeholder}
+                          onSave={async (value) => {
+                            if (tx.counterpartyId) {
+                              await publish(tx.counterpartyId, {
+                                tags: { name: value },
+                              });
+                            }
+                          }}
+                        />
+                      </div>
+                    );
+
+                    // A labeled counterparty — render the label once. Click
+                    // to edit if allowed; otherwise plain text.
+                    if (cpName) {
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          {editable ? (
+                            renderEditor("add label")
+                          ) : (
+                            <div className="font-medium">{cpName}</div>
+                          )}
+                          {explorerIcon}
+                        </div>
+                      );
+                    }
+
+                    // Stripe row with no label and no address — nothing to show.
+                    if (tx.provider === "stripe") {
+                      if (editable) {
                         return (
                           <div className="flex items-center gap-1.5">
-                            <div className="font-medium">{cpName}</div>
-                            {cpExplorer && (
-                              <a
-                                href={cpExplorer}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-muted-foreground hover:text-foreground"
-                                title="View address on block explorer"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            )}
+                            {renderEditor("add label")}
+                            {explorerIcon}
                           </div>
                         );
                       }
-                      if (cpAddr) {
-                        return (
+                      return (
+                        <div className="text-xs text-muted-foreground">—</div>
+                      );
+                    }
+
+                    // Blockchain row, no annotated name: show the address
+                    // (WalletAddress already wraps it in its own explorer
+                    // link + copy button) with an optional inline editor
+                    // beneath for adding a label.
+                    if (cpAddr) {
+                      return (
+                        <div className="flex flex-col gap-1">
                           <WalletAddress
                             address={cpAddr}
                             chain={tx.chain || chain}
                             showLink={true}
                             showCopy={true}
                           />
-                        );
-                      }
-                      return (
-                        <div className="text-xs text-muted-foreground">—</div>
+                          {editable && renderEditor("add label")}
+                        </div>
                       );
-                    })()}
-                    {canEditRows && tx.counterpartyId && (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <InlineDescriptionEditor
-                          value={counterpartyLabel(cpMeta)}
-                          onSave={async (value) => {
-                            await publish(tx.counterpartyId!, {
-                              tags: { name: value },
-                            });
-                          }}
-                          placeholder="add note"
-                        />
-                      </div>
-                    )}
-                  </div>
+                    }
+
+                    return (
+                      <div className="text-xs text-muted-foreground">—</div>
+                    );
+                  })()}
                 </td>
                 <td className="py-2.5 px-4">
                   {(() => {
@@ -1546,7 +1573,7 @@ export function FinanceTransactionTable({
                               content: value,
                             });
                           }}
-                          placeholder="add note"
+                          placeholder="add description"
                         />
                       </div>
                     ) : txMeta.description ? (
@@ -1554,6 +1581,13 @@ export function FinanceTransactionTable({
                     ) : null}
                   </div>
                 </td>
+                {showAccountColumn && (
+                  <td className="py-2.5 px-4">
+                    <Badge variant="outline" className="text-xs">
+                      {tx.accountName}
+                    </Badge>
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -1561,10 +1595,7 @@ export function FinanceTransactionTable({
         <tfoot className="bg-muted/20 border-t-2 border-gray-300 font-semibold">
           <tr>
             {isAdmin && <td className="py-3 px-4"></td>}
-            <td
-              className="py-3 px-4"
-              colSpan={showAccountColumn ? 6 : 5}
-            >
+            <td className="py-3 px-4" colSpan={5}>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-sm">
                   {totals.count} transaction{totals.count !== 1 ? "s" : ""}
@@ -1608,6 +1639,7 @@ export function FinanceTransactionTable({
               </div>
             </td>
             <td className="py-3 px-4"></td>
+            {showAccountColumn && <td className="py-3 px-4"></td>}
           </tr>
         </tfoot>
       </table>
