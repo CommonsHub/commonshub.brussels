@@ -610,7 +610,7 @@ export function FinanceTransactionTable({
       const amount =
         useNormalizedAmount && tx.normalizedAmount !== undefined
           ? tx.normalizedAmount / 100
-          : Number(BigInt(tx.value) / BigInt(10 ** tokenDecimals));
+          : Number(tx.amount ?? Number(tx.value) ?? 0);
 
       const timestamp = tx.timestamp || parseInt(tx.timeStamp);
       const date = new Date(timestamp * 1000);
@@ -768,7 +768,7 @@ export function FinanceTransactionTable({
       const amount =
         useNormalizedAmount && tx.normalizedAmount !== undefined
           ? tx.normalizedAmount / 100
-          : Number(BigInt(tx.value) / BigInt(10 ** tokenDecimals));
+          : Number(tx.amount ?? Number(tx.value) ?? 0);
       if (minAmount && amount < parseFloat(minAmount)) return false;
       if (maxAmount && amount > parseFloat(maxAmount)) return false;
 
@@ -852,7 +852,7 @@ export function FinanceTransactionTable({
       const amount =
         useNormalizedAmount && tx.normalizedAmount !== undefined
           ? tx.normalizedAmount / 100
-          : Number(BigInt(tx.value) / BigInt(10 ** tokenDecimals));
+          : Number(tx.amount ?? Number(tx.value) ?? 0);
 
       if (isIncoming) {
         totalIn += amount;
@@ -895,12 +895,16 @@ export function FinanceTransactionTable({
   };
 
   const selectedTotal = useMemo(() => {
-    let total = BigInt(0);
+    // Sum the human-unit amount (tx.amount is already the parsed number).
+    // chb writes tx.value as a decimal string ("3.000000"), which isn't
+    // a valid BigInt input, so we can't accumulate token-level integers
+    // any more.
+    let total = 0;
     transactions.forEach((tx) => {
       if (selectedTransactions.has(tx.transactionId)) {
         const isIncoming =
           tx.to?.toLowerCase() === accountAddress?.toLowerCase();
-        const value = BigInt(tx.value);
+        const value = Number(tx.amount ?? Number(tx.value) ?? 0);
         total += isIncoming ? value : -value;
       }
     });
@@ -1652,16 +1656,24 @@ export function FinanceTransactionTable({
             {selectedTransactions.size} transactions selected (total{" "}
             <span
               className={
-                selectedTotal >= BigInt(0) ? "text-green-600" : "text-red-600"
+                selectedTotal >= 0 ? "text-green-600" : "text-red-600"
               }
             >
-              {selectedTotal >= BigInt(0) ? "+" : "-"}
-              {formatAmount(
-                selectedTotal.toString().replace("-", ""),
-                tokenDecimals,
-                tokenSymbol,
-                false
-              )}
+              {selectedTotal >= 0 ? "+" : "-"}
+              {(() => {
+                const abs = Math.abs(selectedTotal);
+                const display = abs.toLocaleString("en-US", {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: tokenDecimals,
+                });
+                const isEur =
+                  tokenSymbol === "EUR" ||
+                  tokenSymbol === "EURe" ||
+                  tokenSymbol === "EURb";
+                return isEur
+                  ? `€${display}${tokenSymbol === "EUR" ? "" : ` ${tokenSymbol}`}`
+                  : `${display} ${tokenSymbol}`;
+              })()}
             </span>
             )
           </div>
@@ -1682,7 +1694,7 @@ export function FinanceTransactionTable({
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              {(selectedTotal >= BigInt(0)
+              {(selectedTotal >= 0
                 ? categoriesObj.credit || ["other"]
                 : categoriesObj.debit || ["other"]
               ).map((cat: string) => (
