@@ -8,8 +8,10 @@ import { DATA_DIR } from "@/lib/data-paths";
 import {
   readMonthlyTransactions,
   readMonthlyCounterpartyMetadata,
+  readMonthlyEnrichments,
   augmentTransaction,
 } from "@/lib/transactions";
+import type { EnrichmentEntry } from "@/lib/transactions";
 import type { CounterpartyMetadata } from "@/types/counterparties";
 import type { Transaction } from "@/types/transactions";
 
@@ -46,6 +48,16 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
 
   const [userIsAdmin, userIsMember] = await Promise.all([isAdmin(), isMember()]);
   const canEdit = userIsAdmin || userIsMember;
+  // Enrichment data is PII (e.g., IBANs) — only forward to admins/members.
+  let enrichments: Record<string, EnrichmentEntry> | undefined;
+  if (canEdit) {
+    enrichments = {};
+    for (const month of months) {
+      for (const [uri, info] of readMonthlyEnrichments(year, month)) {
+        enrichments[uri] = info;
+      }
+    }
+  }
 
   const augmentedTransactions = transactions
     .map((tx) => augmentTransaction(tx, counterpartyMetadataMap))
@@ -86,6 +98,7 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
             showAccountColumn={true}
             showExportButton={true}
             useNormalizedAmount={true}
+            enrichments={enrichments}
           />
         </CardContent>
       </Card>

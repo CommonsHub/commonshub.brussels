@@ -1,8 +1,15 @@
 "use client";
 
-import { Fragment, useState, useMemo, useEffect } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,13 +22,52 @@ import {
 import { Input } from "@/components/ui/input";
 import { InlineDescriptionEditor } from "@/components/inline-description-editor";
 import { WalletAddress } from "@/components/wallet-address";
-import { addressFromUri } from "@/lib/nip73";
+import { addressFromUri, chainFromUri, txHashFromUri } from "@/lib/nip73";
 import settings from "@/settings/settings.json";
 import {
   counterpartyLabel,
   type CounterpartyMetadata,
 } from "@/types/counterparties";
 import { useNostr } from "@/components/nostr-provider";
+import type { EnrichmentEntry } from "@/lib/transactions";
+
+// Module-scoped Intl formatters. Calling `n.toLocaleString(...)` allocates
+// a fresh formatter on every invocation, which on a 400-row table balloons
+// into thousands of formatter instances per render. Reusing these saves
+// significant CPU and memory.
+const fmtEur = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const fmtTokenInt = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const fmtTokenFrac = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+});
+const fmtTokenSummary = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 6,
+});
+const fmtDateMD = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+const fmtDateYM = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+});
+const fmtTimeHM = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const fmtDateGB = new Intl.DateTimeFormat("en-GB");
+const fmtTimeGBHM = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 interface TransactionMetadata {
   collective: string;
@@ -32,6 +78,25 @@ interface TransactionMetadata {
   description: string;
 }
 
+// Sentinel value used wherever a collective is missing (no chb metadata
+// and no nostr annotation). Rendered as the "Unassigned" bucket in
+// summary cards and the filter dropdown. Can't be the empty string
+// because Radix Select rejects empty SelectItem values.
+const UNASSIGNED_COLLECTIVE = "__unassigned__";
+
+const DEFAULT_TX_META: TransactionMetadata = {
+  collective: UNASSIGNED_COLLECTIVE,
+  project: null,
+  event: null,
+  category: "other",
+  tags: [],
+  description: "",
+};
+
+// Shared empty-array singleton so memoized rows whose category list is
+// empty don't see a fresh reference on every render.
+const EMPTY_CATEGORIES: string[] = [];
+
 interface EnrichedTransaction {
   // Core display fields (TokenTransfer-shaped legacy contract).
   hash?: string;
@@ -40,6 +105,10 @@ interface EnrichedTransaction {
   to?: string;
   value: string;
   transactionId: string;
+  /** NIP-73 URI of the account this row affects. Combined with
+   *  transactionId, this disambiguates the two rows that an INTERNAL
+   *  transfer emits (one per side). */
+  accountId?: string;
   transactionUri?: string;
   transactionMetadata?: TransactionMetadata;
   counterpartyId?: string | null;
@@ -147,6 +216,406 @@ function counterpartExplorerUrl(
   return `${base}/address/${addr}`;
 }
 
+// LazySelect renders a button that looks like a Radix SelectTrigger until
+// the user clicks it. Only then does it mount a real `<Select>` (with
+// `defaultOpen` so it pops open immediately). When the popover closes the
+// Select unmounts again. This cuts ~800 Radix Select instances down to "0
+// or 1 currently being interacted with" on a 400-row table.
+interface LazySelectOption {
+  value: string;
+  label: string;
+}
+
+const LazySelect = memo(function LazySelect({
+  value,
+  label,
+  options,
+  disabled,
+  className = "w-[140px] h-8 text-xs",
+  onChange,
+}: {
+  value: string;
+  label: string;
+  options: LazySelectOption[];
+  disabled?: boolean;
+  className?: string;
+  onChange: (value: string) => void;
+}) {
+  const [active, setActive] = useState(false);
+
+  if (!active) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!disabled) setActive(true);
+        }}
+        className={`select-trigger flex items-center justify-between gap-1 rounded-md border border-input bg-background px-3 ${className} disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+      </button>
+    );
+  }
+
+  return (
+    <Select
+      defaultOpen
+      value={value}
+      disabled={disabled}
+      onValueChange={(v) => {
+        onChange(v);
+        setActive(false);
+      }}
+      onOpenChange={(open) => {
+        if (!open) setActive(false);
+      }}
+    >
+      <SelectTrigger className={`${className} select-trigger`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+});
+
+// Row component. Memoized so a filter keystroke (which churns
+// `filteredTransactions`) only re-renders rows whose props actually
+// changed. The shallow-equality default is sufficient since all incoming
+// props are primitives or stable references.
+interface TransactionRowProps {
+  tx: EnrichedTransaction;
+  txMeta: TransactionMetadata;
+  cpMeta: CounterpartyMetadata | undefined;
+  isIncoming: boolean;
+  isAdmin: boolean;
+  canEditRows: boolean;
+  isSelected: boolean;
+  isExpanded: boolean;
+  chain: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  showAccountColumn: boolean;
+  categories: string[];
+  collectiveOptions: LazySelectOption[];
+  enrichment?: EnrichmentEntry;
+  onToggleSelect: (txId: string) => void;
+  onToggleExpand: (txId: string) => void;
+  onPublishCollective: (uri: string, value: string) => void;
+  onPublishCategory: (uri: string, value: string) => void;
+  onPublishDescription: (uri: string, value: string) => Promise<void>;
+  onPublishCounterpartyName: (uri: string, value: string) => Promise<void>;
+}
+
+const TransactionRow = memo(function TransactionRow({
+  tx,
+  txMeta,
+  cpMeta,
+  isIncoming,
+  isAdmin,
+  canEditRows,
+  isSelected,
+  isExpanded,
+  chain,
+  tokenSymbol,
+  tokenDecimals,
+  showAccountColumn,
+  categories,
+  collectiveOptions,
+  enrichment,
+  onToggleSelect,
+  onToggleExpand,
+  onPublishCollective,
+  onPublishCategory,
+  onPublishDescription,
+  onPublishCounterpartyName,
+}: TransactionRowProps) {
+  const timestamp = tx.timestamp ?? parseInt(tx.timeStamp || "0");
+  const date = new Date(timestamp * 1000);
+  const dateStr = fmtDateMD.format(date);
+  const timeStr = fmtTimeHM.format(date);
+
+  const txHref = txExplorerUrl(tx, chain);
+
+  const cpName = counterpartyLabel(cpMeta);
+  const cpAddr = addressFromUri(tx.counterpartyId);
+  const cpExplorer = counterpartExplorerUrl(tx, chain);
+  const cpEditable = canEditRows && !!tx.counterpartyId;
+
+  const hasGross = typeof tx.grossAmount === "number";
+  const hasNet = typeof tx.netAmount === "number";
+  const grossVal = hasGross ? tx.grossAmount : undefined;
+  const netVal = hasNet ? tx.netAmount : undefined;
+  const showNet = hasGross && hasNet && tx.grossAmount !== tx.netAmount;
+  const gross = formatRowAmount(tx, tokenSymbol, tokenDecimals, grossVal);
+  const net = showNet
+    ? formatRowAmount(tx, tokenSymbol, tokenDecimals, netVal)
+    : null;
+
+  const collectiveValue = txMeta.collective || UNASSIGNED_COLLECTIVE;
+  const collectiveLabel =
+    collectiveValue === UNASSIGNED_COLLECTIVE
+      ? "Unassigned"
+      : (collectiveOptions.find((o) => o.value === collectiveValue)?.label ??
+        collectiveValue);
+  const categoryValue = txMeta.category || "other";
+
+  return (
+    <Fragment>
+      <tr
+        className={`hover:bg-muted/20 transition-colors text-sm ${
+          isSelected ? "bg-muted/30" : ""
+        }`}
+        onClick={(e) => {
+          // Don't toggle if clicking on interactive elements
+          const target = e.target as HTMLElement;
+          if (
+            target.tagName === "INPUT" ||
+            target.tagName === "SELECT" ||
+            target.tagName === "BUTTON" ||
+            target.tagName === "A" ||
+            target.closest("button") ||
+            target.closest("a") ||
+            target.closest(".select-trigger")
+          ) {
+            return;
+          }
+          if (canEditRows) onToggleExpand(tx.transactionId);
+        }}
+        style={{ cursor: canEditRows ? "pointer" : "default" }}
+      >
+        {isAdmin && (
+          <td className="py-2.5 px-4">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(tx.transactionId)}
+              className="cursor-pointer"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </td>
+        )}
+        <td className="py-2.5 px-4">
+          <div className="flex items-start gap-1.5">
+            <div>
+              <div className="font-medium">{dateStr}</div>
+              <div className="text-xs text-muted-foreground">{timeStr}</div>
+            </div>
+            {txHref && (
+              <a
+                href={txHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="mt-0.5 text-muted-foreground hover:text-foreground"
+                title="View transaction on block explorer"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        </td>
+        <td className="py-2.5 px-4">
+          <Badge
+            className={`text-xs ${typeBadgeClass(tx.rawType, isIncoming)}`}
+          >
+            {typeLabel(tx.rawType, isIncoming)}
+          </Badge>
+        </td>
+        <td className="py-2.5 px-4">
+          <div
+            className={`whitespace-nowrap font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
+          >
+            {isIncoming ? "+" : "-"}
+            {gross.value}
+          </div>
+          {net ? (
+            <div className="whitespace-nowrap text-xs text-muted-foreground">
+              {isIncoming ? "+" : "-"}
+              {net.value}
+              {net.suffix ? ` ${net.suffix}` : ""}
+            </div>
+          ) : gross.suffix ? (
+            <div className="text-xs text-muted-foreground">{gross.suffix}</div>
+          ) : null}
+        </td>
+        <td className="py-2.5 px-4">
+          {cpName ? (
+            <div className="flex items-center gap-1.5">
+              {cpEditable ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <InlineDescriptionEditor
+                    value={cpName}
+                    className="font-medium"
+                    placeholder="add label"
+                    onSave={(v) =>
+                      onPublishCounterpartyName(tx.counterpartyId!, v)
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="font-medium">{cpName}</div>
+              )}
+              {cpExplorer && (
+                <a
+                  href={cpExplorer}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-muted-foreground hover:text-foreground"
+                  title={
+                    tx.provider === "stripe"
+                      ? "Open in Stripe"
+                      : "View address on block explorer"
+                  }
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          ) : tx.provider === "stripe" ? (
+            cpEditable ? (
+              <div className="flex items-center gap-1.5">
+                <div onClick={(e) => e.stopPropagation()}>
+                  <InlineDescriptionEditor
+                    value=""
+                    className="font-medium"
+                    placeholder="add label"
+                    onSave={(v) =>
+                      onPublishCounterpartyName(tx.counterpartyId!, v)
+                    }
+                  />
+                </div>
+                {cpExplorer && (
+                  <a
+                    href={cpExplorer}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Open in Stripe"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">—</div>
+            )
+          ) : cpAddr ? (
+            <div className="flex flex-col gap-1">
+              <WalletAddress
+                address={cpAddr}
+                chain={tx.chain || chain}
+                showLink={true}
+                showCopy={true}
+              />
+              {cpEditable && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <InlineDescriptionEditor
+                    value=""
+                    className="font-medium"
+                    placeholder="add label"
+                    onSave={(v) =>
+                      onPublishCounterpartyName(tx.counterpartyId!, v)
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">—</div>
+          )}
+        </td>
+        <td
+          className="py-2.5 px-4"
+          onClick={(e) => canEditRows && e.stopPropagation()}
+        >
+          {canEditRows ? (
+            <LazySelect
+              value={collectiveValue}
+              label={collectiveLabel}
+              options={collectiveOptions}
+              disabled={!tx.transactionUri}
+              className="w-[140px] h-8 text-xs"
+              onChange={(v) => {
+                if (tx.transactionUri) onPublishCollective(tx.transactionUri, v);
+              }}
+            />
+          ) : (
+            <Badge variant="outline" className="text-xs">
+              {collectiveLabel}
+            </Badge>
+          )}
+        </td>
+        <td
+          className="py-2.5 px-4"
+          onClick={(e) => canEditRows && e.stopPropagation()}
+        >
+          {canEditRows && categories.length > 0 ? (
+            <LazySelect
+              value={categoryValue}
+              label={categoryValue}
+              options={categories.map((c) => ({ value: c, label: c }))}
+              disabled={!tx.transactionUri}
+              className="w-[120px] h-8 text-xs"
+              onChange={(v) => {
+                if (tx.transactionUri) onPublishCategory(tx.transactionUri, v);
+              }}
+            />
+          ) : txMeta.category ? (
+            <Badge variant="outline" className="text-xs">
+              {txMeta.category}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </td>
+        <td className="py-2.5 px-4 text-left">
+          <div className="flex flex-col gap-1">
+            {canEditRows && tx.transactionUri ? (
+              <div onClick={(e) => e.stopPropagation()}>
+                <InlineDescriptionEditor
+                  value={txMeta.description || ""}
+                  onSave={(v) => onPublishDescription(tx.transactionUri!, v)}
+                  placeholder="add description"
+                />
+              </div>
+            ) : txMeta.description ? (
+              <div className="text-xs text-left">{txMeta.description}</div>
+            ) : null}
+          </div>
+        </td>
+        {showAccountColumn && (
+          <td className="py-2.5 px-4">
+            <Badge variant="outline" className="text-xs">
+              {tx.accountName}
+            </Badge>
+          </td>
+        )}
+      </tr>
+      {isExpanded && (
+        <tr className="bg-muted/20 border-b">
+          <td
+            colSpan={7 + (isAdmin ? 1 : 0) + (showAccountColumn ? 1 : 0)}
+            className="py-4 px-6"
+          >
+            <ExpandedRowDetails tx={tx} enrichment={enrichment} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+});
+
 interface FinanceTransactionTableProps {
   transactions: EnrichedTransaction[];
   accountAddress: string;
@@ -164,6 +633,10 @@ interface FinanceTransactionTableProps {
   /** "month" swaps the month-filter for a week-filter and assumes every row
    *  is in the same calendar month. */
   viewScope?: "year" | "month";
+  /** Private per-tx enrichment data (e.g., Monerium bank-sender names +
+   *  IBANs), keyed by NIP-73 tx URI. Server pages should only forward
+   *  this when the viewer has admin/member role — it contains PII. */
+  enrichments?: Record<string, EnrichmentEntry>;
 }
 
 const EUR_SYMBOLS = new Set(["EUR", "EURe", "EURb"]);
@@ -189,16 +662,11 @@ function formatRowAmount(
   if (decoded !== undefined) {
     const abs = Math.abs(decoded);
     if (isEur) {
-      formatted = abs.toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      formatted = fmtEur.format(abs);
     } else {
-      const isInt = Number.isInteger(abs);
-      formatted = abs.toLocaleString("en-US", {
-        minimumFractionDigits: isInt ? 0 : 2,
-        maximumFractionDigits: isInt ? 0 : 6,
-      });
+      formatted = (Number.isInteger(abs) ? fmtTokenInt : fmtTokenFrac).format(
+        abs
+      );
     }
   } else {
     // legacy raw-integer string path
@@ -236,11 +704,7 @@ function weekLabel(year: number, month: number, week: number): string {
   const startDay = (week - 1) * 7 + 1;
   const endDate = new Date(year, month, 0); // last day of month
   const endDay = Math.min(endDate.getDate(), week * 7);
-  const fmt = (d: number) =>
-    new Date(year, month - 1, d).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
+  const fmt = (d: number) => fmtDateMD.format(new Date(year, month - 1, d));
   return `Week ${week} (${fmt(startDay)}–${fmt(endDay)})`;
 }
 
@@ -280,19 +744,94 @@ function formatAmount(
 }
 
 /**
+ * Build an explorer/dashboard URL for one of the row's identifiers.
+ * Handles the chb-side stripe: prefix and turns the bare provider ids
+ * (cus_…, txn_…, charge…) into deep-links into the right Stripe account.
+ * Returns null when no useful link can be built for this id.
+ */
+function identifierLink(
+  field: "id" | "accountId" | "counterpartyId" | "providerId",
+  value: string,
+  ctx: { acct: string | null; chain: string | null }
+): string | null {
+  // Stripe identifiers (with or without the chb-side `stripe:` prefix).
+  const stripeId = value.startsWith("stripe:")
+    ? value.slice("stripe:".length)
+    : value;
+  if (stripeId.startsWith("acct_")) {
+    return `https://dashboard.stripe.com/${stripeId}`;
+  }
+  if (ctx.acct) {
+    if (stripeId.startsWith("cus_")) {
+      return `https://dashboard.stripe.com/${ctx.acct}/customers/${stripeId}`;
+    }
+    if (stripeId.startsWith("txn_") || stripeId.startsWith("ch_")) {
+      return `https://dashboard.stripe.com/${ctx.acct}/search?query=${stripeId}`;
+    }
+  }
+  // Ethereum tx URI → block-explorer tx page.
+  if (value.startsWith("ethereum:")) {
+    const chain = chainFromUri(value) ?? ctx.chain ?? null;
+    const base = chain ? CHAIN_EXPLORERS[chain] : undefined;
+    const hash = txHashFromUri(value);
+    if (base && hash && (value.includes(":tx:") || value.includes(":txn:"))) {
+      return `${base}/tx/${hash}`;
+    }
+    const addr = addressFromUri(value);
+    if (base && addr) return `${base}/address/${addr}`;
+  }
+  return null;
+}
+
+/** Render one dt/dd row inside an auto-width grid. */
+function DetailRow({
+  k,
+  children,
+}: {
+  k: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <dt className="text-muted-foreground whitespace-nowrap pr-2">{k}</dt>
+      <dd className="break-all">{children}</dd>
+    </>
+  );
+}
+
+/**
  * Reveal panel shown below a row when a member clicks on it.
  * Surfaces the raw chb tags + metadata + identifiers from
  * generated/transactions.json — useful for spot-checking what the
- * pipeline actually wrote for a given row.
+ * pipeline actually wrote for a given row. Identifiers are turned into
+ * deep-links into the relevant dashboard/explorer when possible. The
+ * Enrichment section is only populated when the parent passes the
+ * private map (admin/member only).
  */
-function ExpandedRowDetails({ tx }: { tx: EnrichedTransaction }) {
+function ExpandedRowDetails({
+  tx,
+  enrichment,
+}: {
+  tx: EnrichedTransaction;
+  enrichment?: EnrichmentEntry;
+}) {
   const rows = tx as unknown as Record<string, unknown>;
   const rawTags = Array.isArray(rows.tags) ? (rows.tags as unknown[][]) : [];
   const metadata = (rows.metadata as Record<string, unknown> | undefined) ?? {};
 
-  const idFields: Array<[string, string | null | undefined]> = [
+  // Extract the Stripe account id (acct_…) once so cus_/txn_/ch_ ids on
+  // this row can be deep-linked into the same account dashboard.
+  const accountIdRaw = (rows.accountId as string | undefined) ?? null;
+  const stripeAcct = accountIdRaw?.startsWith("stripe:acct_")
+    ? accountIdRaw.slice("stripe:".length)
+    : accountIdRaw?.startsWith("acct_")
+      ? accountIdRaw
+      : null;
+  const linkCtx = { acct: stripeAcct, chain: tx.chain ?? null };
+
+  const idFields: Array<["id" | "accountId" | "counterpartyId" | "providerId", string | null]> = [
     ["id", tx.transactionId],
-    ["accountId", (rows.accountId as string | undefined) ?? null],
+    ["accountId", accountIdRaw],
     ["counterpartyId", tx.counterpartyId ?? null],
     ["providerId", (rows.providerId as string | undefined) ?? null],
   ];
@@ -309,43 +848,72 @@ function ExpandedRowDetails({ tx }: { tx: EnrichedTransaction }) {
     ["value", (rows.value as string | undefined) ?? null],
   ];
 
+  const enrichmentEntries = enrichment
+    ? Object.entries(enrichment).filter(
+        ([, v]) => v !== null && v !== undefined && v !== ""
+      )
+    : [];
+
   return (
-    <div className="grid gap-4 text-xs md:grid-cols-3">
-      <section>
+    <div className="grid gap-x-8 gap-y-4 text-xs md:grid-cols-3">
+      <section className="min-w-0">
         <h4 className="font-semibold text-foreground mb-2">Identifiers</h4>
-        <dl className="space-y-1 font-mono">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono">
           {idFields.map(([k, v]) => (
-            <div
-              key={k}
-              className="grid grid-cols-[7rem_1fr] gap-2 break-all"
-            >
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd>{v ?? <span className="text-muted-foreground">—</span>}</dd>
-            </div>
+            <DetailRow key={k} k={k}>
+              {v ? (
+                (() => {
+                  const href = identifierLink(k, v, linkCtx);
+                  return href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:underline"
+                    >
+                      <span className="break-all">{v}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0 opacity-60" />
+                    </a>
+                  ) : (
+                    <span className="break-all">{v}</span>
+                  );
+                })()
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </DetailRow>
           ))}
         </dl>
+        {enrichmentEntries.length > 0 && (
+          <div className="mt-4">
+            <h4 className="font-semibold text-foreground mb-2">Enrichment</h4>
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono">
+              {enrichmentEntries.map(([k, v]) => (
+                <DetailRow key={k} k={k}>
+                  {typeof v === "object"
+                    ? JSON.stringify(v)
+                    : String(v)}
+                </DetailRow>
+              ))}
+            </dl>
+          </div>
+        )}
       </section>
-      <section>
+      <section className="min-w-0">
         <h4 className="font-semibold text-foreground mb-2">Fields</h4>
-        <dl className="space-y-1 font-mono">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono">
           {numericFields.map(([k, v]) => (
-            <div
-              key={k}
-              className="grid grid-cols-[7rem_1fr] gap-2 break-all"
-            >
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd>
-                {v === null || v === undefined || v === "" ? (
-                  <span className="text-muted-foreground">—</span>
-                ) : (
-                  String(v)
-                )}
-              </dd>
-            </div>
+            <DetailRow key={k} k={k}>
+              {v === null || v === undefined || v === "" ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                String(v)
+              )}
+            </DetailRow>
           ))}
         </dl>
       </section>
-      <section className="md:col-span-1 col-span-full space-y-4">
+      <section className="min-w-0 space-y-4">
         <div>
           <h4 className="font-semibold text-foreground mb-2">
             Tags ({rawTags.length})
@@ -372,15 +940,11 @@ function ExpandedRowDetails({ tx }: { tx: EnrichedTransaction }) {
           {Object.keys(metadata).length === 0 ? (
             <p className="text-muted-foreground">no metadata</p>
           ) : (
-            <dl className="space-y-1 font-mono">
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono">
               {Object.entries(metadata).map(([k, v]) => (
-                <div
-                  key={k}
-                  className="grid grid-cols-[8rem_1fr] gap-2 break-all"
-                >
-                  <dt className="text-muted-foreground">{k}</dt>
-                  <dd>{String(v ?? "")}</dd>
-                </div>
+                <DetailRow key={k} k={k}>
+                  {String(v ?? "")}
+                </DetailRow>
               ))}
             </dl>
           )}
@@ -398,10 +962,7 @@ function formatNormalizedAmount(
   const absAmount = Math.abs(amountInCents);
   const euros = absAmount / 100;
 
-  const formattedNumber = euros.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const formattedNumber = fmtEur.format(euros);
 
   const isEuro =
     tokenSymbol === "EUR" || tokenSymbol === "EURe" || tokenSymbol === "EURb";
@@ -430,6 +991,7 @@ export function FinanceTransactionTable({
   showExportButton = false,
   useNormalizedAmount = false,
   viewScope = "year",
+  enrichments,
 }: FinanceTransactionTableProps) {
   // Admins are members too for editing purposes; either grants inline edits.
   const canEditRows = canEdit || isAdmin;
@@ -446,47 +1008,75 @@ export function FinanceTransactionTable({
     }
   }, [transactions, watch]);
 
-  // Merge baseline + nostr annotation for one row's tx metadata.
-  function effectiveTxMetadata(tx: EnrichedTransaction): TransactionMetadata {
-    const baseline = tx.transactionMetadata ?? {
-      collective: "commonshub",
-      project: null,
-      event: null,
-      category: "other",
-      tags: [],
-      description: "",
-    };
-    const ann = tx.transactionUri ? getAnnotation(tx.transactionUri) : undefined;
-    if (!ann) return baseline;
-    return {
-      ...baseline,
-      collective: ann.tagMap.collective ?? baseline.collective,
-      category: ann.tagMap.category ?? baseline.category,
-      description: ann.content || baseline.description,
-    };
-  }
+  // Pre-compute merged (baseline + nostr annotation) metadata for every
+  // tx in one pass. Used to be called inline per row × per render, which
+  // on a 400-row page meant 800+ object allocations on every keystroke.
+  // Now we recompute only when transactions or annotations change.
+  const txMetaMap = useMemo(() => {
+    const map = new Map<string, TransactionMetadata>();
+    for (const tx of transactions) {
+      if (!tx.transactionUri) continue;
+      const baseline = tx.transactionMetadata ?? DEFAULT_TX_META;
+      const ann = getAnnotation(tx.transactionUri);
+      map.set(
+        tx.transactionUri,
+        ann
+          ? {
+              ...baseline,
+              collective: ann.tagMap.collective ?? baseline.collective,
+              category: ann.tagMap.category ?? baseline.category,
+              description: ann.content || baseline.description,
+            }
+          : baseline
+      );
+    }
+    return map;
+  }, [transactions, getAnnotation]);
 
-  // Merge baseline + nostr annotation for one row's counterparty metadata.
-  function effectiveCpMetadata(
-    tx: EnrichedTransaction
-  ): CounterpartyMetadata | undefined {
-    const baseline = tx.counterpartyMetadata;
-    const ann = tx.counterpartyId ? getAnnotation(tx.counterpartyId) : undefined;
-    if (!ann) return baseline;
-    return { ...(baseline ?? {}), ...ann.tagMap };
-  }
+  const cpMetaMap = useMemo(() => {
+    const map = new Map<string, CounterpartyMetadata>();
+    for (const tx of transactions) {
+      if (!tx.counterpartyId) continue;
+      const baseline = tx.counterpartyMetadata;
+      const ann = getAnnotation(tx.counterpartyId);
+      if (!ann && !baseline) continue;
+      map.set(
+        tx.counterpartyId,
+        ann
+          ? ({ ...(baseline ?? {}), ...ann.tagMap } as CounterpartyMetadata)
+          : (baseline as CounterpartyMetadata)
+      );
+    }
+    return map;
+  }, [transactions, getAnnotation]);
+
+  const getTxMeta = useCallback(
+    (tx: EnrichedTransaction): TransactionMetadata =>
+      (tx.transactionUri && txMetaMap.get(tx.transactionUri)) ||
+      tx.transactionMetadata ||
+      DEFAULT_TX_META,
+    [txMetaMap]
+  );
+
+  const getCpMeta = useCallback(
+    (tx: EnrichedTransaction): CounterpartyMetadata | undefined =>
+      (tx.counterpartyId && cpMetaMap.get(tx.counterpartyId)) ||
+      tx.counterpartyMetadata,
+    [cpMetaMap]
+  );
 
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(
     new Set()
   );
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const toggleExpanded = (txId: string) =>
+  const toggleExpanded = useCallback((txId: string) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
       if (next.has(txId)) next.delete(txId);
       else next.add(txId);
       return next;
     });
+  }, []);
   const [batchCollective, setBatchCollective] = useState("");
   const [batchCategory, setBatchCategory] = useState("");
   const [batchNote, setBatchNote] = useState("");
@@ -496,10 +1086,16 @@ export function FinanceTransactionTable({
   const [maxAmount, setMaxAmount] = useState<string>("");
   const [collectiveFilter, setCollectiveFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [descriptionFilter, setDescriptionFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [weekFilter, setWeekFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
+  // Pagination — page is 1-indexed in the URL. The filter aggregates
+  // (totals, summary cards, dropdown counts) always reflect *all*
+  // filtered rows; only the rendered <tbody> uses the paged slice.
+  const [page, setPage] = useState<number>(1);
+  const [perPage, setPerPage] = useState<number>(20);
 
   // Initialize filters from URL on mount
   useEffect(() => {
@@ -508,20 +1104,32 @@ export function FinanceTransactionTable({
     const max = searchParams.get("maxAmount");
     const collective = searchParams.get("collective");
     const category = searchParams.get("category");
+    const description = searchParams.get("description");
     const type = searchParams.get("type");
     const month = searchParams.get("month");
     const week = searchParams.get("week");
     const account = searchParams.get("account");
+    const pageParam = searchParams.get("page");
+    const perPageParam = searchParams.get("perPage");
 
     if (counterpart) setCounterpartFilter(counterpart);
     if (min) setMinAmount(min);
     if (max) setMaxAmount(max);
     if (collective) setCollectiveFilter(collective);
     if (category) setCategoryFilter(category);
+    if (description) setDescriptionFilter(description);
     if (type) setTypeFilter(type);
     if (month) setMonthFilter(month);
     if (week) setWeekFilter(week);
     if (account) setAccountFilter(account);
+    if (pageParam) {
+      const p = parseInt(pageParam, 10);
+      if (Number.isFinite(p) && p >= 1) setPage(p);
+    }
+    if (perPageParam) {
+      const pp = parseInt(perPageParam, 10);
+      if (pp === 20 || pp === 50 || pp === 100) setPerPage(pp);
+    }
   }, [searchParams]);
 
   // Update URL when filters change
@@ -559,6 +1167,12 @@ export function FinanceTransactionTable({
       params.delete("category");
     }
 
+    if (descriptionFilter) {
+      params.set("description", descriptionFilter);
+    } else {
+      params.delete("description");
+    }
+
     if (typeFilter !== "all") {
       params.set("type", typeFilter);
     } else {
@@ -583,6 +1197,13 @@ export function FinanceTransactionTable({
       params.delete("account");
     }
 
+    // Pagination: leave defaults out of the URL so the cleanest URL is
+    // also the canonical one (?page=1&perPage=20 == no params).
+    if (page !== 1) params.set("page", String(page));
+    else params.delete("page");
+    if (perPage !== 20) params.set("perPage", String(perPage));
+    else params.delete("perPage");
+
     const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}`;
     router.replace(newUrl, { scroll: false });
   }, [
@@ -591,17 +1212,79 @@ export function FinanceTransactionTable({
     maxAmount,
     collectiveFilter,
     categoryFilter,
+    descriptionFilter,
     typeFilter,
     monthFilter,
     weekFilter,
     accountFilter,
+    page,
+    perPage,
     router,
+  ]);
+
+  // Reset to page 1 whenever a filter changes. Otherwise a user paging
+  // through unfiltered results who then applies a filter that yields
+  // fewer pages would land on an out-of-range page and see nothing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setPage(1);
+  }, [
+    counterpartFilter,
+    minAmount,
+    maxAmount,
+    collectiveFilter,
+    categoryFilter,
+    descriptionFilter,
+    typeFilter,
+    monthFilter,
+    weekFilter,
+    accountFilter,
+    perPage,
   ]);
 
   // Get collectives and categories from settings
   const collectivesObj = (settings.finance as any).collectives || {};
   const collectives = Object.keys(collectivesObj);
   const categoriesObj = (settings.finance as any).categories || {};
+
+  // Stable options array for the collective LazySelect — recomputed only
+  // when settings change (i.e. never at runtime).
+  const collectiveOptions = useMemo<LazySelectOption[]>(
+    () =>
+      collectives.map((slug) => ({
+        value: slug,
+        label: collectivesObj[slug]?.name || slug,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // Stable per-row callbacks. Without these, every render re-creates the
+  // arrow functions passed to the memoized row, defeating React.memo.
+  const onPublishCollective = useCallback(
+    (uri: string, value: string) => {
+      publish(uri, { tags: { collective: value } });
+    },
+    [publish]
+  );
+  const onPublishCategory = useCallback(
+    (uri: string, value: string) => {
+      publish(uri, { tags: { category: value } });
+    },
+    [publish]
+  );
+  const onPublishDescription = useCallback(
+    async (uri: string, value: string) => {
+      await publish(uri, { content: value });
+    },
+    [publish]
+  );
+  const onPublishCounterpartyName = useCallback(
+    async (uri: string, value: string) => {
+      await publish(uri, { tags: { name: value } });
+    },
+    [publish]
+  );
 
   // Categories applicable to a given row.
   //
@@ -613,7 +1296,7 @@ export function FinanceTransactionTable({
   //
   // INTERNAL → no categories (it's between our own accounts).
   function categoriesForTx(tx: EnrichedTransaction): string[] {
-    if (tx.rawType === "INTERNAL") return [];
+    if (tx.rawType === "INTERNAL") return EMPTY_CATEGORIES;
     const isContributionToken =
       tx.currency ===
       (settings as any).contributionToken?.symbol;
@@ -671,11 +1354,7 @@ export function FinanceTransactionTable({
     transactions.forEach((tx) => {
       const timestamp = tx.timestamp || parseInt(tx.timeStamp);
       const date = new Date(timestamp * 1000);
-      const monthYear = date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-      });
-      months.add(monthYear);
+      months.add(fmtDateYM.format(date));
     });
     return Array.from(months).sort((a, b) => {
       const dateA = new Date(a);
@@ -749,13 +1428,11 @@ export function FinanceTransactionTable({
 
       const timestamp = tx.timestamp || parseInt(tx.timeStamp);
       const date = new Date(timestamp * 1000);
-      const monthYear = date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-      });
+      const monthYear = fmtDateYM.format(date);
       const txCounterpart = counterpartLabelForTx(tx);
-      const txCollective = tx.transactionMetadata?.collective || "commonshub";
-      const txCategory = tx.transactionMetadata?.category || "other";
+      const meta = getTxMeta(tx);
+      const txCollective = meta.collective || UNASSIGNED_COLLECTIVE;
+      const txCategory = meta.category || "other";
       const txAccount = tx.accountSlug;
 
       // Helper to check if tx matches all filters except one
@@ -814,6 +1491,12 @@ export function FinanceTransactionTable({
           txAccount !== accountFilter
         )
           return false;
+        // Description has no dropdown of its own — always apply it.
+        if (descriptionFilter) {
+          const desc = meta.description || "";
+          if (!desc.toLowerCase().includes(descriptionFilter.toLowerCase()))
+            return false;
+        }
         return true;
       };
 
@@ -877,12 +1560,14 @@ export function FinanceTransactionTable({
     maxAmount,
     collectiveFilter,
     categoryFilter,
+    descriptionFilter,
     typeFilter,
     monthFilter,
     accountFilter,
     tokenDecimals,
     accountAddress,
     useNormalizedAmount,
+    getTxMeta,
   ]);
 
   // Filter transactions based on all filters
@@ -907,14 +1592,22 @@ export function FinanceTransactionTable({
 
       // Filter by collective
       if (collectiveFilter !== "all") {
-        const txCollective = tx.transactionMetadata?.collective || "commonshub";
+        const meta = getTxMeta(tx);
+        const txCollective = meta.collective || UNASSIGNED_COLLECTIVE;
         if (txCollective !== collectiveFilter) return false;
       }
 
       // Filter by category
       if (categoryFilter !== "all") {
-        const txCategory = tx.transactionMetadata?.category || "other";
+        const txCategory = getTxMeta(tx).category || "other";
         if (txCategory !== categoryFilter) return false;
+      }
+
+      // Filter by description (case-insensitive substring match).
+      if (descriptionFilter) {
+        const desc = getTxMeta(tx).description || "";
+        if (!desc.toLowerCase().includes(descriptionFilter.toLowerCase()))
+          return false;
       }
 
       // Filter by type
@@ -935,11 +1628,7 @@ export function FinanceTransactionTable({
       if (viewScope === "year" && monthFilter !== "all") {
         const timestamp = tx.timestamp || parseInt(tx.timeStamp);
         const date = new Date(timestamp * 1000);
-        const monthYear = date.toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-        });
-        if (monthYear !== monthFilter) return false;
+        if (fmtDateYM.format(date) !== monthFilter) return false;
       }
 
       // Filter by week (month-scope only)
@@ -962,6 +1651,7 @@ export function FinanceTransactionTable({
     maxAmount,
     collectiveFilter,
     categoryFilter,
+    descriptionFilter,
     typeFilter,
     monthFilter,
     weekFilter,
@@ -970,6 +1660,7 @@ export function FinanceTransactionTable({
     accountAddress,
     useNormalizedAmount,
     viewScope,
+    getTxMeta,
   ]);
 
   // Calculate totals for filtered transactions
@@ -1026,6 +1717,23 @@ export function FinanceTransactionTable({
     tokenSymbol,
   ]);
 
+  // Pagination — totals above already use the *unpaginated* filtered
+  // array, so summary cards/footer always reflect all matching rows.
+  // Only the rendered tbody iterates `pagedTransactions`.
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredTransactions.length / perPage)
+  );
+  const clampedPage = Math.min(page, totalPages);
+  const pagedTransactions = useMemo(
+    () =>
+      filteredTransactions.slice(
+        (clampedPage - 1) * perPage,
+        clampedPage * perPage
+      ),
+    [filteredTransactions, clampedPage, perPage]
+  );
+
   // Totals grouped by collective × currency (same currency-merge rules as
   // `totals` above: EUR / EURe / EURb collapse to "EUR").
   // Computed off the unfiltered `transactions` so every collective stays
@@ -1043,8 +1751,8 @@ export function FinanceTransactionTable({
       Map<string, { totalIn: number; totalOut: number; count: number }>
     >();
     transactions.forEach((tx) => {
-      const meta = effectiveTxMetadata(tx);
-      const collective = meta.collective || "commonshub";
+      const meta = getTxMeta(tx);
+      const collective = meta.collective || UNASSIGNED_COLLECTIVE;
       const isIncoming = useNormalizedAmount
         ? tx.type === "CREDIT"
         : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
@@ -1080,27 +1788,23 @@ export function FinanceTransactionTable({
           }),
       }))
       .sort((a, b) => {
-        // Push "commonshub" first; the rest alphabetical.
+        // commonshub first, Unassigned last, the rest alphabetical.
         if (a.collective === "commonshub") return -1;
         if (b.collective === "commonshub") return 1;
+        if (a.collective === UNASSIGNED_COLLECTIVE) return 1;
+        if (b.collective === UNASSIGNED_COLLECTIVE) return -1;
         return a.collective.localeCompare(b.collective);
       });
-    // effectiveTxMetadata depends on the nostr annotation context, which
-    // is fetched via the hook closure — re-running on transactions
-    // changes is good enough since annotation updates trigger re-renders
-    // through React state anyway.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, useNormalizedAmount, accountAddress, tokenSymbol]);
+  }, [transactions, useNormalizedAmount, accountAddress, tokenSymbol, getTxMeta]);
 
-  const toggleTransaction = (txId: string) => {
-    const newSelected = new Set(selectedTransactions);
-    if (newSelected.has(txId)) {
-      newSelected.delete(txId);
-    } else {
-      newSelected.add(txId);
-    }
-    setSelectedTransactions(newSelected);
-  };
+  const toggleTransaction = useCallback((txId: string) => {
+    setSelectedTransactions((prev) => {
+      const next = new Set(prev);
+      if (next.has(txId)) next.delete(txId);
+      else next.add(txId);
+      return next;
+    });
+  }, []);
 
   const toggleAll = () => {
     if (selectedTransactions.size === filteredTransactions.length) {
@@ -1111,6 +1815,15 @@ export function FinanceTransactionTable({
       );
     }
   };
+
+  const fmtSelectedTotal = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: tokenDecimals,
+      }),
+    [tokenDecimals]
+  );
 
   const selectedTotal = useMemo(() => {
     // Sum the human-unit amount (tx.amount is already the parsed number).
@@ -1175,11 +1888,8 @@ export function FinanceTransactionTable({
     // Prepare CSV rows
     const rows = filteredTransactions.map((tx) => {
       const date = new Date(parseInt(tx.timeStamp) * 1000);
-      const dateStr = date.toLocaleDateString("en-GB");
-      const timeStr = date.toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      const dateStr = fmtDateGB.format(date);
+      const timeStr = fmtTimeGBHM.format(date);
       const isIncoming = useNormalizedAmount
         ? tx.type === "CREDIT"
         : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
@@ -1191,9 +1901,12 @@ export function FinanceTransactionTable({
       );
       const amount = a.suffix ? `${a.value} ${a.suffix}` : a.value;
 
-      const txMeta = effectiveTxMetadata(tx);
-      const cpMeta = effectiveCpMetadata(tx);
-      const collective = txMeta.collective || "commonshub";
+      const txMeta = getTxMeta(tx);
+      const cpMeta = getCpMeta(tx);
+      const collective =
+        txMeta.collective === UNASSIGNED_COLLECTIVE || !txMeta.collective
+          ? "unassigned"
+          : txMeta.collective;
       const category = txMeta.category || "";
       const cpLabel = counterpartyLabel(cpMeta);
       const description = txMeta.description || "";
@@ -1257,10 +1970,7 @@ export function FinanceTransactionTable({
     currency: string
   ): string => {
     const isEur = currency === "EUR";
-    const display = n.toLocaleString("en-US", {
-      minimumFractionDigits: isEur ? 2 : 0,
-      maximumFractionDigits: isEur ? 2 : 6,
-    });
+    const display = (isEur ? fmtEur : fmtTokenSummary).format(n);
     return isEur ? `${sign}€${display}` : `${sign}${display} ${currency}`;
   };
 
@@ -1277,7 +1987,9 @@ export function FinanceTransactionTable({
         <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 px-4">
           {totalsByCollective.map((c) => {
             const name =
-              collectivesObj[c.collective]?.name || c.collective;
+              c.collective === UNASSIGNED_COLLECTIVE
+                ? "Unassigned"
+                : collectivesObj[c.collective]?.name || c.collective;
             const isActive = collectiveFilter === c.collective;
             const totalCount = c.perCurrency.reduce(
               (sum, r) => sum + r.count,
@@ -1513,10 +2225,17 @@ export function FinanceTransactionTable({
                       {filterCounts.collectives.get(slug) || 0})
                     </SelectItem>
                   ))}
+                  <SelectItem
+                    value={UNASSIGNED_COLLECTIVE}
+                    className="text-xs"
+                  >
+                    Unassigned (
+                    {filterCounts.collectives.get(UNASSIGNED_COLLECTIVE) || 0})
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </th>
-            <th className="py-2 px-4" colSpan={showAccountColumn ? 1 : 2}>
+            <th className="py-2 px-4">
               <Select
                 value={categoryFilter}
                 onValueChange={setCategoryFilter}
@@ -1536,14 +2255,21 @@ export function FinanceTransactionTable({
                 </SelectContent>
               </Select>
             </th>
+            <th className="py-2 px-4">
+              <Input
+                type="text"
+                placeholder="Description"
+                value={descriptionFilter}
+                onChange={(e) => setDescriptionFilter(e.target.value)}
+                className="h-7 text-xs w-full"
+              />
+            </th>
             {showAccountColumn && (
-              <>
-                <th className="py-2 px-4"></th>
-                <th className="py-2 px-4">
-                  <Select
-                    value={accountFilter}
-                    onValueChange={setAccountFilter}
-                  >
+              <th className="py-2 px-4">
+                <Select
+                  value={accountFilter}
+                  onValueChange={setAccountFilter}
+                >
                     <SelectTrigger className="h-7 text-xs w-full">
                       <SelectValue placeholder="All accounts" />
                     </SelectTrigger>
@@ -1564,367 +2290,43 @@ export function FinanceTransactionTable({
                     </SelectContent>
                   </Select>
                 </th>
-              </>
             )}
           </tr>
         </thead>
         <tbody className="divide-y">
-          {filteredTransactions.map((tx, index) => {
-            // Determine if transaction is incoming based on mode
+          {pagedTransactions.map((tx) => {
             const isIncoming = useNormalizedAmount
               ? tx.type === "CREDIT"
               : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
-
-            // Use appropriate timestamp field based on mode
-            const timestamp =
-              useNormalizedAmount && tx.timestamp
-                ? tx.timestamp
-                : parseInt(tx.timeStamp || "0");
-            const date = new Date(timestamp * 1000);
-            const dateStr = date.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            });
-            const timeStr = date.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-
-            const categories = categoriesForTx(tx);
-
-            const txMeta = effectiveTxMetadata(tx);
-            const cpMeta = effectiveCpMetadata(tx);
-
-            const isExpanded = expandedRows.has(tx.transactionId);
-
+            // `transactionId` alone isn't unique: an INTERNAL transfer
+            // emits two rows that share the same on-chain tx URI (one
+            // per side). Combining with accountId disambiguates them.
+            const rowKey = `${tx.transactionId}#${tx.accountId ?? ""}`;
             return (
-              <Fragment key={`${tx.hash}-${index}`}>
-              <tr
-                className={`hover:bg-muted/20 transition-colors text-sm ${
-                  selectedTransactions.has(tx.transactionId)
-                    ? "bg-muted/30"
-                    : ""
-                }`}
-                onClick={(e) => {
-                  // Don't toggle if clicking on interactive elements
-                  const target = e.target as HTMLElement;
-                  if (
-                    target.tagName === "INPUT" ||
-                    target.tagName === "SELECT" ||
-                    target.tagName === "BUTTON" ||
-                    target.tagName === "A" ||
-                    target.closest("button") ||
-                    target.closest("a") ||
-                    target.closest(".select-trigger")
-                  ) {
-                    return;
-                  }
-                  if (canEditRows) {
-                    toggleExpanded(tx.transactionId);
-                  }
-                }}
-                style={{ cursor: canEditRows ? "pointer" : "default" }}
-              >
-                {isAdmin && (
-                  <td className="py-2.5 px-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedTransactions.has(tx.transactionId)}
-                      onChange={() => toggleTransaction(tx.transactionId)}
-                      className="cursor-pointer"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </td>
-                )}
-                <td className="py-2.5 px-4">
-                  <div className="flex items-start gap-1.5">
-                    <div>
-                      <div className="font-medium">{dateStr}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {timeStr}
-                      </div>
-                    </div>
-                    {(() => {
-                      const href = txExplorerUrl(tx, chain);
-                      if (!href) return null;
-                      return (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-0.5 text-muted-foreground hover:text-foreground"
-                          title="View transaction on block explorer"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      );
-                    })()}
-                  </div>
-                </td>
-                <td className="py-2.5 px-4">
-                  <Badge
-                    className={`text-xs ${typeBadgeClass(tx.rawType, isIncoming)}`}
-                  >
-                    {typeLabel(tx.rawType, isIncoming)}
-                  </Badge>
-                </td>
-                <td className="py-2.5 px-4">
-                  {(() => {
-                    const hasGross = typeof tx.grossAmount === "number";
-                    const hasNet = typeof tx.netAmount === "number";
-                    const grossVal = hasGross ? tx.grossAmount : undefined;
-                    const netVal = hasNet ? tx.netAmount : undefined;
-                    const showNet =
-                      hasGross && hasNet && tx.grossAmount !== tx.netAmount;
-
-                    const gross = formatRowAmount(
-                      tx,
-                      tokenSymbol,
-                      tokenDecimals,
-                      grossVal
-                    );
-                    const net = showNet
-                      ? formatRowAmount(tx, tokenSymbol, tokenDecimals, netVal)
-                      : null;
-
-                    return (
-                      <>
-                        <div
-                          className={`whitespace-nowrap font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
-                        >
-                          {isIncoming ? "+" : "-"}
-                          {gross.value}
-                        </div>
-                        {net ? (
-                          <div className="whitespace-nowrap text-xs text-muted-foreground">
-                            {isIncoming ? "+" : "-"}
-                            {net.value}
-                            {net.suffix ? ` ${net.suffix}` : ""}
-                          </div>
-                        ) : gross.suffix ? (
-                          <div className="text-xs text-muted-foreground">
-                            {gross.suffix}
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                </td>
-                <td className="py-2.5 px-4">
-                  {(() => {
-                    const cpName = counterpartyLabel(cpMeta);
-                    const cpAddr = addressFromUri(tx.counterpartyId);
-                    const cpExplorer = counterpartExplorerUrl(tx, chain);
-                    const editable = canEditRows && !!tx.counterpartyId;
-
-                    const explorerIcon = cpExplorer ? (
-                      <a
-                        href={cpExplorer}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-muted-foreground hover:text-foreground"
-                        title={
-                          tx.provider === "stripe"
-                            ? "Open in Stripe"
-                            : "View address on block explorer"
-                        }
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    ) : null;
-
-                    const renderEditor = (placeholder: string) => (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <InlineDescriptionEditor
-                          value={cpName}
-                          className="font-medium"
-                          placeholder={placeholder}
-                          onSave={async (value) => {
-                            if (tx.counterpartyId) {
-                              await publish(tx.counterpartyId, {
-                                tags: { name: value },
-                              });
-                            }
-                          }}
-                        />
-                      </div>
-                    );
-
-                    // A labeled counterparty — render the label once. Click
-                    // to edit if allowed; otherwise plain text.
-                    if (cpName) {
-                      return (
-                        <div className="flex items-center gap-1.5">
-                          {editable ? (
-                            renderEditor("add label")
-                          ) : (
-                            <div className="font-medium">{cpName}</div>
-                          )}
-                          {explorerIcon}
-                        </div>
-                      );
-                    }
-
-                    // Stripe row with no label and no address — nothing to show.
-                    if (tx.provider === "stripe") {
-                      if (editable) {
-                        return (
-                          <div className="flex items-center gap-1.5">
-                            {renderEditor("add label")}
-                            {explorerIcon}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="text-xs text-muted-foreground">—</div>
-                      );
-                    }
-
-                    // Blockchain row, no annotated name: show the address
-                    // (WalletAddress already wraps it in its own explorer
-                    // link + copy button) with an optional inline editor
-                    // beneath for adding a label.
-                    if (cpAddr) {
-                      return (
-                        <div className="flex flex-col gap-1">
-                          <WalletAddress
-                            address={cpAddr}
-                            chain={tx.chain || chain}
-                            showLink={true}
-                            showCopy={true}
-                          />
-                          {editable && renderEditor("add label")}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="text-xs text-muted-foreground">—</div>
-                    );
-                  })()}
-                </td>
-                <td
-                  className="py-2.5 px-4"
-                  onClick={(e) => canEditRows && e.stopPropagation()}
-                >
-                  {canEditRows ? (
-                    <Select
-                      value={txMeta.collective || "commonshub"}
-                      disabled={!tx.transactionUri}
-                      onValueChange={(value) => {
-                        if (tx.transactionUri) {
-                          publish(tx.transactionUri, {
-                            tags: { collective: value },
-                          });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-[140px] h-8 text-xs select-trigger">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {collectives.map((slug) => (
-                          <SelectItem
-                            key={slug}
-                            value={slug}
-                            className="text-xs"
-                          >
-                            {collectivesObj[slug]?.name || slug}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge variant="outline" className="text-xs">
-                      {collectivesObj[txMeta.collective || "commonshub"]?.name ||
-                        txMeta.collective ||
-                        "commonshub"}
-                    </Badge>
-                  )}
-                </td>
-                <td
-                  className="py-2.5 px-4"
-                  onClick={(e) => canEditRows && e.stopPropagation()}
-                >
-                  {canEditRows && categories.length > 0 ? (
-                    <Select
-                      value={txMeta.category || "other"}
-                      disabled={!tx.transactionUri}
-                      onValueChange={(value) => {
-                        if (tx.transactionUri) {
-                          publish(tx.transactionUri, {
-                            tags: { category: value },
-                          });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px] h-8 text-xs select-trigger">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat: string) => (
-                          <SelectItem
-                            key={cat}
-                            value={cat}
-                            className="text-xs"
-                          >
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : txMeta.category ? (
-                    <Badge variant="outline" className="text-xs">
-                      {txMeta.category}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="py-2.5 px-4 text-left">
-                  <div className="flex flex-col gap-1">
-                    {canEditRows && tx.transactionUri ? (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <InlineDescriptionEditor
-                          value={txMeta.description || ""}
-                          onSave={async (value) => {
-                            await publish(tx.transactionUri!, {
-                              content: value,
-                            });
-                          }}
-                          placeholder="add description"
-                        />
-                      </div>
-                    ) : txMeta.description ? (
-                      <div className="text-xs text-left">
-                        {txMeta.description}
-                      </div>
-                    ) : null}
-                  </div>
-                </td>
-                {showAccountColumn && (
-                  <td className="py-2.5 px-4">
-                    <Badge variant="outline" className="text-xs">
-                      {tx.accountName}
-                    </Badge>
-                  </td>
-                )}
-              </tr>
-              {isExpanded && (
-                <tr className="bg-muted/20 border-b">
-                  <td
-                    colSpan={
-                      7 + (isAdmin ? 1 : 0) + (showAccountColumn ? 1 : 0)
-                    }
-                    className="py-4 px-6"
-                  >
-                    <ExpandedRowDetails tx={tx} />
-                  </td>
-                </tr>
-              )}
-              </Fragment>
+              <TransactionRow
+                key={rowKey}
+                tx={tx}
+                txMeta={getTxMeta(tx)}
+                cpMeta={getCpMeta(tx)}
+                isIncoming={isIncoming}
+                isAdmin={isAdmin}
+                canEditRows={canEditRows}
+                isSelected={selectedTransactions.has(tx.transactionId)}
+                isExpanded={expandedRows.has(tx.transactionId)}
+                chain={chain}
+                tokenSymbol={tokenSymbol}
+                tokenDecimals={tokenDecimals}
+                showAccountColumn={showAccountColumn}
+                categories={categoriesForTx(tx)}
+                collectiveOptions={collectiveOptions}
+                enrichment={enrichments?.[tx.transactionId]}
+                onToggleSelect={toggleTransaction}
+                onToggleExpand={toggleExpanded}
+                onPublishCollective={onPublishCollective}
+                onPublishCategory={onPublishCategory}
+                onPublishDescription={onPublishDescription}
+                onPublishCounterpartyName={onPublishCounterpartyName}
+              />
             );
           })}
         </tbody>
@@ -1942,14 +2344,8 @@ export function FinanceTransactionTable({
               <div className="flex flex-col gap-3">
                 {totals.perCurrency.map((row) => {
                   const isEur = row.currency === "EUR";
-                  // Fiat currencies use 2 fractional digits; tokens like CHT
-                  // are typically integer / few decimals — let toLocaleString
-                  // pick within a 0..6 window.
                   const fmt = (n: number) =>
-                    n.toLocaleString("en-US", {
-                      minimumFractionDigits: isEur ? 2 : 0,
-                      maximumFractionDigits: isEur ? 2 : 6,
-                    });
+                    (isEur ? fmtEur : fmtTokenSummary).format(n);
                   const symbol = isEur ? "€" : ` ${row.currency}`;
                   const formatSigned = (sign: "+" | "-", n: number) =>
                     isEur
@@ -1994,6 +2390,81 @@ export function FinanceTransactionTable({
       </table>
       </div>
 
+      {/* Pagination controls */}
+      {filteredTransactions.length > 0 && (
+        <div className="mt-4 px-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="text-muted-foreground">
+            {(() => {
+              const start = (clampedPage - 1) * perPage + 1;
+              const end = Math.min(
+                clampedPage * perPage,
+                filteredTransactions.length
+              );
+              return `${start}–${end} of ${filteredTransactions.length}`;
+            })()}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Per page</span>
+              <Select
+                value={String(perPage)}
+                onValueChange={(v) => setPerPage(parseInt(v, 10))}
+              >
+                <SelectTrigger className="h-7 w-[70px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20" className="text-xs">20</SelectItem>
+                  <SelectItem value="50" className="text-xs">50</SelectItem>
+                  <SelectItem value="100" className="text-xs">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => setPage(1)}
+                disabled={clampedPage <= 1}
+              >
+                «
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={clampedPage <= 1}
+              >
+                ‹
+              </Button>
+              <span className="px-2 whitespace-nowrap">
+                Page {clampedPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={clampedPage >= totalPages}
+              >
+                ›
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => setPage(totalPages)}
+                disabled={clampedPage >= totalPages}
+              >
+                »
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Batch editing footer */}
       {isAdmin && selectedTransactions.size >= 2 && (
         <div className="mt-4 p-4 bg-muted/30 border-t flex items-center gap-4">
@@ -2007,10 +2478,7 @@ export function FinanceTransactionTable({
               {selectedTotal >= 0 ? "+" : "-"}
               {(() => {
                 const abs = Math.abs(selectedTotal);
-                const display = abs.toLocaleString("en-US", {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: tokenDecimals,
-                });
+                const display = fmtSelectedTotal.format(abs);
                 const isEur =
                   tokenSymbol === "EUR" ||
                   tokenSymbol === "EURe" ||

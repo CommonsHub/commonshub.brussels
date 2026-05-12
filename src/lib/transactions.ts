@@ -141,6 +141,48 @@ function seedWithFinanceAccounts(
   }
 }
 
+/**
+ * Per-tx enrichment data (e.g., Monerium bank-sender names + IBANs) lives
+ * in `generated/private/enrichment.json` and is keyed by NIP-73 tx URI.
+ * It contains personal info, so callers must gate this on admin/member
+ * roles before exposing it to the client.
+ */
+export interface EnrichmentEntry {
+  name?: string;
+  iban?: string;
+  [key: string]: unknown;
+}
+
+export function readMonthlyEnrichments(
+  year: string,
+  month: string
+): Map<string, EnrichmentEntry> {
+  const out = new Map<string, EnrichmentEntry>();
+  const filePath = path.join(
+    DATA_DIR,
+    year,
+    month,
+    "generated",
+    "private",
+    "enrichment.json"
+  );
+  if (!fs.existsSync(filePath)) return out;
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+      enrichments?: Record<string, EnrichmentEntry>;
+    };
+    for (const [uri, info] of Object.entries(data.enrichments ?? {})) {
+      out.set(uri, info);
+    }
+  } catch (error) {
+    console.error(
+      `Error reading enrichment data for ${year}-${month}:`,
+      error
+    );
+  }
+  return out;
+}
+
 export function readMonthlyCounterpartyMetadata(
   year: string,
   month: string

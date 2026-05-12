@@ -5,6 +5,7 @@ import { FinanceTransactionTable } from "@/components/finance-transaction-table"
 import {
   readMonthlyTransactions,
   readMonthlyCounterpartyMetadata,
+  readMonthlyEnrichments,
   augmentTransaction,
 } from "@/lib/transactions";
 
@@ -26,6 +27,10 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
   const [userIsAdmin, userIsMember] = await Promise.all([isAdmin(), isMember()]);
   const canEdit = userIsAdmin || userIsMember;
   const counterpartyMetadataMap = readMonthlyCounterpartyMetadata(year, month);
+  // Enrichment data is PII (e.g., IBANs) — only forward to admins/members.
+  const enrichments = canEdit
+    ? Object.fromEntries(readMonthlyEnrichments(year, month))
+    : undefined;
 
   const augmentedTransactions = transactions
     .map((tx) => augmentTransaction(tx, counterpartyMetadataMap))
@@ -72,6 +77,7 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
             showExportButton={true}
             useNormalizedAmount={true}
             viewScope="month"
+            enrichments={enrichments}
           />
         </CardContent>
       </Card>
