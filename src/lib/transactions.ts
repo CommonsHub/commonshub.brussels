@@ -198,18 +198,45 @@ export interface AugmentedTransaction
 }
 
 /**
- * Pick the "meaningful" counterparty URI for display purposes.
+ * Set of NIP-73 URIs for the addresses we own (settings.finance.accounts).
+ * Used to decide whether `accountId` is "us" or an external community
+ * member when picking the display counterparty.
+ */
+const ORG_ACCOUNT_URIS: Set<string> = (() => {
+  const out = new Set<string>();
+  for (const account of settings.finance.accounts) {
+    if (!account.address || !account.chain) continue;
+    const uri = ethereumAddressId(account.chain, account.address);
+    if (uri) out.add(uri);
+  }
+  return out;
+})();
+
+/**
+ * Pick the "meaningful" counterparty URI for display.
  *
- * chb writes the raw on-chain counterparty in `counterpartyId`, which for
- * MINT/BURN rows is the token contract (e.g. the EURe / CHT token), not
- * the human moving the tokens. The human is on the `accountId` side in
- * those rows, so swap them in for display.
+ * chb writes the raw on-chain counterparty in `counterpartyId`. For
+ * MINT/BURN rows that's the token contract (EURe, CHT, …), which isn't
+ * a useful counterpart to show. Two distinct cases:
+ *
+ *  - CHT MINT/BURN: `accountId` is a community member (Leen, Doug, …)
+ *    who's the actual "active" participant of the row — swap it in.
+ *  - Monerium EURe/EURb MINT/BURN: `accountId` is one of our own org
+ *    accounts (Checking, Savings, …). The real counterpart is the bank
+ *    sender/recipient, which chb doesn't put in `generated/`. Don't
+ *    swap — accountId is *us*, not the counterpart. The row will show
+ *    "—" until chb populates a real counterparty.
  */
 function displayCounterpartyId(tx: Transaction): string | null {
-  if (tx.type === "MINT" || tx.type === "BURN") return tx.accountId;
-  // ethereum:<chainId>:token:<addr> — also a non-human counterparty.
-  if (tx.counterpartyId?.includes(":token:")) return tx.accountId;
-  return tx.counterpartyId;
+  const isTokenCp =
+    !!tx.counterpartyId && tx.counterpartyId.includes(":token:");
+  const needsSwap =
+    tx.type === "MINT" || tx.type === "BURN" || isTokenCp;
+  if (!needsSwap) return tx.counterpartyId;
+  // Only swap when accountId isn't one of our org accounts; otherwise we
+  // end up labelling the row with our own account name, which is wrong.
+  if (ORG_ACCOUNT_URIS.has(tx.accountId)) return tx.counterpartyId;
+  return tx.accountId;
 }
 
 /**
