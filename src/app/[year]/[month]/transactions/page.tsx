@@ -93,43 +93,6 @@ async function loadMonthlyCounterpartyMetadata(year: string, month: string): Pro
   return metadataMap;
 }
 
-/**
- * Load Monerium orders for a month
- */
-async function loadMonthlyMoneriumOrders(year: string, month: string): Promise<Map<string, any>> {
-  const ordersMap = new Map<string, any>();
-
-  const moneriumDir = path.join(DATA_DIR, year, month, "private", "monerium");
-
-  if (fs.existsSync(moneriumDir)) {
-    const files = fs.readdirSync(moneriumDir);
-
-    for (const file of files) {
-      if (file.endsWith(".json")) {
-        try {
-          const filePath = path.join(moneriumDir, file);
-          const content = fs.readFileSync(filePath, "utf-8");
-          const data = JSON.parse(content);
-
-          if (data.orders) {
-            for (const order of data.orders) {
-              if (order.meta?.txHashes) {
-                for (const txHash of order.meta.txHashes) {
-                  ordersMap.set(txHash.toLowerCase(), order);
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Error reading Monerium file ${file}:`, error);
-        }
-      }
-    }
-  }
-
-  return ordersMap;
-}
-
 export default async function MonthlyTransactionsPage({ params }: PageProps) {
   const { year, month } = await params;
 
@@ -143,21 +106,15 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
   // Check if user is admin
   const userIsAdmin = await isAdmin();
 
-  // Load counterparty metadata and Monerium orders
+  // Load counterparty metadata
   const counterpartyMetadataMap = await loadMonthlyCounterpartyMetadata(year, month);
-  const moneriumOrdersMap = await loadMonthlyMoneriumOrders(year, month);
 
-  // Augment transactions with counterparty metadata and Monerium data
+  // Augment transactions with counterparty metadata
   const augmentedTransactions = transactions.map((tx) => {
     const counterpartyId = counterpartyNip73Id(tx) ?? undefined;
     const transactionUri = transactionNip73Id(tx) ?? undefined;
     const counterpartyMetadata = counterpartyId
       ? counterpartyMetadataMap.get(counterpartyId)
-      : undefined;
-
-    // Get Monerium order if available
-    const moneriumOrder = tx.txHash
-      ? moneriumOrdersMap.get(tx.txHash.toLowerCase())
       : undefined;
 
     return {
@@ -166,7 +123,6 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
       transactionUri,
       counterpartyId,
       counterpartyMetadata,
-      moneriumOrder,
       // Add TokenTransfer-like fields for compatibility
       hash: tx.txHash,
       timeStamp: tx.timestamp.toString(),

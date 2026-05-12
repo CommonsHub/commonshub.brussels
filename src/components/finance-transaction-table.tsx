@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,17 +16,12 @@ import { Input } from "@/components/ui/input";
 import { InlineDescriptionEditor } from "@/components/inline-description-editor";
 import { WalletAddress } from "@/components/wallet-address";
 import type { TokenTransfer } from "@/lib/etherscan";
-import type { MoneriumOrder } from "@/lib/monerium-node";
 import settings from "@/settings/settings.json";
 import {
   counterpartyLabel,
   type CounterpartyMetadata,
 } from "@/types/counterparties";
 import { useNostr } from "@/components/nostr-provider";
-
-interface TransactionWithMonerium extends TokenTransfer {
-  moneriumOrder?: MoneriumOrder;
-}
 
 interface TransactionMetadata {
   collective: string;
@@ -36,12 +32,16 @@ interface TransactionMetadata {
   description: string;
 }
 
-interface EnrichedTransaction extends TransactionWithMonerium {
+interface EnrichedTransaction extends TokenTransfer {
   transactionId: string;
   transactionUri?: string;
   transactionMetadata?: TransactionMetadata;
   counterpartyId?: string;
   counterpartyMetadata?: CounterpartyMetadata;
+  // Raw counterparty value from chb generated/transactions.json — either a
+  // 0x address for on-chain rows or a free-text name for Monerium IBAN /
+  // Stripe charge descriptions.
+  counterparty?: string;
   accountName?: string;
   accountSlug?: string;
   normalizedAmount?: number;
@@ -418,8 +418,16 @@ export function FinanceTransactionTable({
   const uniqueCounterparts = useMemo(() => {
     const counterparts = new Set<string>();
     transactions.forEach((tx) => {
-      if (tx.moneriumOrder?.counterpart?.details?.name) {
-        counterparts.add(tx.moneriumOrder.counterpart.details.name);
+      // Only surface human-readable counterpart labels (e.g. IBAN sender
+      // names from Monerium). Skip raw 0x addresses — there are too many
+      // to be useful in a dropdown.
+      const name = tx.counterparty;
+      if (
+        name &&
+        !/^0x[a-fA-F0-9]{40}$/.test(name) &&
+        name !== "0x0000000000000000000000000000000000000000"
+      ) {
+        counterparts.add(name);
       }
     });
     return Array.from(counterparts).sort();
@@ -512,7 +520,7 @@ export function FinanceTransactionTable({
         year: "numeric",
         month: "short",
       });
-      const txCounterpart = tx.moneriumOrder?.counterpart?.details?.name;
+      const txCounterpart = tx.counterparty;
       const txCollective = tx.transactionMetadata?.collective || "commonshub";
       const txCategory = tx.transactionMetadata?.category || "other";
       const txAccount = tx.accountName;
@@ -641,7 +649,7 @@ export function FinanceTransactionTable({
 
       // Filter by counterpart
       if (counterpartFilter !== "all") {
-        const txCounterpart = tx.moneriumOrder?.counterpart?.details?.name;
+        const txCounterpart = tx.counterparty;
         if (txCounterpart !== counterpartFilter) return false;
       }
 
@@ -1324,17 +1332,7 @@ export function FinanceTransactionTable({
                 )}
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
-                    {tx.moneriumOrder?.counterpart ? (
-                      <div
-                        className="font-medium"
-                        title={
-                          tx.moneriumOrder.counterpart.identifier.iban ||
-                          undefined
-                        }
-                      >
-                        {tx.moneriumOrder.counterpart.details.name}
-                      </div>
-                    ) : tx.provider === "stripe" ? (
+                    {tx.provider === "stripe" ? (
                       (() => {
                         const cusId = tx.counterpartyId?.startsWith(
                           "stripe:customer:"
@@ -1366,25 +1364,57 @@ export function FinanceTransactionTable({
                         );
                       })()
                     ) : (() => {
-                      const addr = isIncoming ? tx.from : tx.to;
+                      // For blockchain rows, the counterpart label may be
+                      // either a 0x address (real on-chain counterparty) or
+                      // a free-text name from Monerium IBAN transfers.
+                      // Prefer the manually-annotated counterparty name from
+                      // generated/counterparties.json when available.
+                      const cpName = counterpartyLabel(cpMeta);
+                      const raw = tx.counterparty;
                       const isHexAddress =
-                        typeof addr === "string" &&
-                        /^0x[a-fA-F0-9]{40}$/.test(addr);
-                      if (isHexAddress) {
-                        return (
+                        typeof raw === "string" &&
+                        /^0x[a-fA-F0-9]{40}$/.test(raw);
+                      const txExplorer = txExplorerUrl(tx, chain);
+                      const explorerIcon = txExplorer ? (
+                        <a
+                          href={txExplorer}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-muted-foreground hover:text-foreground"
+                          title="View transaction on block explorer"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : null;
+                      let body: React.ReactNode;
+                      if (cpName) {
+                        body = (
+                          <div className="font-medium">{cpName}</div>
+                        );
+                      } else if (isHexAddress) {
+                        body = (
                           <WalletAddress
-                            address={addr}
+                            address={raw!}
                             chain={tx.chain || chain}
                             showLink={true}
                             showCopy={true}
                           />
                         );
+                      } else {
+                        body = (
+                          <div
+                            className="font-medium"
+                            title={raw || undefined}
+                          >
+                            {raw || "—"}
+                          </div>
+                        );
                       }
-                      // Monerium IBAN transfers carry the bank sender/receiver
-                      // name (not an on-chain address) in tx.counterparty.
                       return (
-                        <div className="font-medium" title={addr || undefined}>
-                          {addr || "—"}
+                        <div className="flex items-center gap-1.5">
+                          {body}
+                          {explorerIcon}
                         </div>
                       );
                     })()}
@@ -1405,13 +1435,6 @@ export function FinanceTransactionTable({
                 </td>
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
-                    {tx.moneriumOrder?.memo && (
-                      <div className="text-xs text-muted-foreground italic">
-                        {tx.moneriumOrder.memo?.length > 30
-                          ? tx.moneriumOrder.memo.slice(0, 30) + "..."
-                          : tx.moneriumOrder.memo}
-                      </div>
-                    )}
                     {!txMeta.description &&
                       tx.provider === "stripe" &&
                       tx.counterparty && (
