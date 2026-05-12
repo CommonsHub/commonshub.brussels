@@ -174,14 +174,30 @@ export interface AugmentedTransaction
 }
 
 /**
+ * Pick the "meaningful" counterparty URI for display purposes.
+ *
+ * chb writes the raw on-chain counterparty in `counterpartyId`, which for
+ * MINT/BURN rows is the token contract (e.g. the EURe / CHT token), not
+ * the human moving the tokens. The human is on the `accountId` side in
+ * those rows, so swap them in for display.
+ */
+function displayCounterpartyId(tx: Transaction): string | null {
+  if (tx.type === "MINT" || tx.type === "BURN") return tx.accountId;
+  // ethereum:<chainId>:token:<addr> — also a non-human counterparty.
+  if (tx.counterpartyId?.includes(":token:")) return tx.accountId;
+  return tx.counterpartyId;
+}
+
+/**
  * Resolve TokenTransfer-style compat fields for a single tx.
  */
 export function augmentTransaction(
   tx: Transaction,
   counterpartyMetadataMap: Map<string, CounterpartyMetadata>
 ): AugmentedTransaction {
-  const counterpartyMetadata = tx.counterpartyId
-    ? counterpartyMetadataMap.get(tx.counterpartyId)
+  const effectiveCounterpartyId = displayCounterpartyId(tx);
+  const counterpartyMetadata = effectiveCounterpartyId
+    ? counterpartyMetadataMap.get(effectiveCounterpartyId)
     : undefined;
 
   const accountAddr = accountAddressFor(tx);
@@ -202,6 +218,7 @@ export function augmentTransaction(
 
   return {
     ...tx,
+    counterpartyId: effectiveCounterpartyId,
     type: direction,
     rawType: tx.type,
     transactionId: tx.id,

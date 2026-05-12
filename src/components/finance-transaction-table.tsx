@@ -925,14 +925,15 @@ export function FinanceTransactionTable({
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       {showExportButton && (
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end mb-4 px-4">
           <Button onClick={exportToCSV} variant="outline" size="sm">
             Export to CSV
           </Button>
         </div>
       )}
+      <div className="overflow-x-auto">
       <table className="w-full">
         <thead className="border-b bg-muted/30">
           <tr className="text-xs text-muted-foreground">
@@ -1511,6 +1512,7 @@ export function FinanceTransactionTable({
           </tr>
         </tfoot>
       </table>
+      </div>
 
       {/* Batch editing footer */}
       {isAdmin && selectedTransactions.size >= 2 && (
