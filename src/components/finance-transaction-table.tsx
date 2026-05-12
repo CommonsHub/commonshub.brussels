@@ -603,27 +603,40 @@ export function FinanceTransactionTable({
   const collectives = Object.keys(collectivesObj);
   const categoriesObj = (settings.finance as any).categories || {};
 
-  // Categories applicable to a given row, picked off chb's rawType.
-  // - CREDIT / DEBIT → settings.finance.categories.credit / .debit
-  // - MINT / BURN   → .mint / .burn
-  // - TRANSFER      → falls back to .burn (peer-to-peer token spend)
-  // - INTERNAL      → no categories (between our own accounts)
+  // Categories applicable to a given row.
+  //
+  // MINT/BURN means different things depending on the currency: for the
+  // contribution token (CHT) they're "why tokens were issued / spent"
+  // (heartbeat, booking, …); for Monerium EURe/EURb they're "money in /
+  // money out" — i.e. the same shape as Stripe CREDIT/DEBIT. So pick the
+  // list by currency family first, then by direction inside it.
+  //
+  // INTERNAL → no categories (it's between our own accounts).
   function categoriesForTx(tx: EnrichedTransaction): string[] {
-    switch (tx.rawType) {
-      case "MINT":
-        return categoriesObj.mint || [];
-      case "BURN":
-        return categoriesObj.burn || [];
-      case "TRANSFER":
-        return categoriesObj.burn || [];
-      case "INTERNAL":
-        return [];
-      case "DEBIT":
-        return categoriesObj.debit || [];
-      case "CREDIT":
-      default:
-        return categoriesObj.credit || [];
+    if (tx.rawType === "INTERNAL") return [];
+    const isContributionToken =
+      tx.currency ===
+      (settings as any).contributionToken?.symbol;
+    if (isContributionToken) {
+      switch (tx.rawType) {
+        case "MINT":
+          return categoriesObj.mint || [];
+        case "BURN":
+        case "TRANSFER":
+          return categoriesObj.burn || [];
+        case "DEBIT":
+          return categoriesObj.debit || [];
+        case "CREDIT":
+        default:
+          return categoriesObj.credit || [];
+      }
     }
+    // Fiat-like currency (EUR / EURe / EURb / Stripe EUR / …). Direction
+    // is what matters; the tx.type override from augmentTransaction has
+    // already been normalised to CREDIT / DEBIT.
+    return tx.type === "DEBIT"
+      ? categoriesObj.debit || []
+      : categoriesObj.credit || [];
   }
 
   // Extract unique values for filter dropdowns
