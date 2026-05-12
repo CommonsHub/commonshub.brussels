@@ -1334,10 +1334,34 @@ export function FinanceTransactionTable({
                       >
                         {tx.moneriumOrder.counterpart.details.name}
                       </div>
+                    ) : tx.provider === "stripe" ? (
+                      (() => {
+                        const label =
+                          counterpartyLabel(cpMeta) || tx.counterparty || "";
+                        const cusId = tx.counterpartyId?.startsWith(
+                          "stripe:customer:"
+                        )
+                          ? tx.counterpartyId.slice(
+                              "stripe:customer:".length
+                            )
+                          : null;
+                        return cusId ? (
+                          <a
+                            href={`https://dashboard.stripe.com/customers/${cusId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:underline"
+                          >
+                            {label || cusId}
+                          </a>
+                        ) : (
+                          <div className="font-medium">{label}</div>
+                        );
+                      })()
                     ) : (
                       <WalletAddress
                         address={isIncoming ? tx.from : tx.to}
-                        chain={chain}
+                        chain={tx.chain || chain}
                         showLink={true}
                         showCopy={true}
                       />
