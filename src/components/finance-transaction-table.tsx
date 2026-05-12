@@ -81,6 +81,23 @@ function txExplorerUrl(
   return `${base}/tx/${hash}`;
 }
 
+function counterpartExplorerUrl(
+  tx: EnrichedTransaction,
+  fallbackChain: string
+): string | null {
+  // Stripe customer (when chb starts emitting it).
+  if (tx.counterpartyId?.startsWith("stripe:customer:")) {
+    const cusId = tx.counterpartyId.slice("stripe:customer:".length);
+    return `https://dashboard.stripe.com/customers/${cusId}`;
+  }
+  // Blockchain address.
+  const chain = tx.chain || fallbackChain;
+  const base = chain ? CHAIN_EXPLORERS[chain] : undefined;
+  const addr = addressFromUri(tx.counterpartyId);
+  if (!base || !addr) return null;
+  return `${base}/address/${addr}`;
+}
+
 interface FinanceTransactionTableProps {
   transactions: EnrichedTransaction[];
   accountAddress: string;
@@ -932,7 +949,7 @@ export function FinanceTransactionTable({
                 />
               </th>
             )}
-            <th className="text-left py-2 px-4 font-medium">Date</th>
+            <th className="text-left py-2 px-4 font-medium w-24">Date</th>
             {showAccountColumn && (
               <th className="text-left py-2 px-4 font-medium">Account</th>
             )}
@@ -950,11 +967,11 @@ export function FinanceTransactionTable({
           {/* Filter row */}
           <tr className="bg-muted/10 border-b">
             {isAdmin && <th className="py-2 px-4"></th>}
-            <th className="py-2 px-4">
+            <th className="py-2 px-4 w-24">
               {viewScope === "month" && weekContext ? (
                 <Select value={weekFilter} onValueChange={setWeekFilter}>
-                  <SelectTrigger className="h-7 text-xs w-full">
-                    <SelectValue placeholder="All weeks" />
+                  <SelectTrigger className="h-7 text-xs w-full min-w-0">
+                    <SelectValue placeholder="Week" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" className="text-xs">
@@ -973,8 +990,8 @@ export function FinanceTransactionTable({
                 </Select>
               ) : (
                 <Select value={monthFilter} onValueChange={setMonthFilter}>
-                  <SelectTrigger className="h-7 text-xs w-full">
-                    <SelectValue placeholder="All months" />
+                  <SelectTrigger className="h-7 text-xs w-full min-w-0">
+                    <SelectValue placeholder="Month" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" className="text-xs">
@@ -1093,7 +1110,7 @@ export function FinanceTransactionTable({
                 </th>
               </>
             )}
-            <th className="py-2 px-4">
+            <th className="py-2 px-4" colSpan={2}>
               <Select
                 value={counterpartFilter}
                 onValueChange={setCounterpartFilter}
@@ -1113,7 +1130,6 @@ export function FinanceTransactionTable({
                 </SelectContent>
               </Select>
             </th>
-            <th className="py-2 px-4"></th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1185,29 +1201,30 @@ export function FinanceTransactionTable({
                   </td>
                 )}
                 <td className="py-2.5 px-4">
-                  {(() => {
-                    const href = txExplorerUrl(tx, chain);
-                    const inner = (
-                      <>
-                        <div className="font-medium">{dateStr}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {timeStr}
-                        </div>
-                      </>
-                    );
-                    return href ? (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        {inner}
-                      </a>
-                    ) : (
-                      <div>{inner}</div>
-                    );
-                  })()}
+                  <div className="flex items-start gap-1.5">
+                    <div>
+                      <div className="font-medium">{dateStr}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {timeStr}
+                      </div>
+                    </div>
+                    {(() => {
+                      const href = txExplorerUrl(tx, chain);
+                      if (!href) return null;
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5 text-muted-foreground hover:text-foreground"
+                          title="View transaction on block explorer"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      );
+                    })()}
+                  </div>
                 </td>
                 {showAccountColumn && (
                   <td className="py-2.5 px-4">
@@ -1331,43 +1348,63 @@ export function FinanceTransactionTable({
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
                     {(() => {
-                      // Stripe rows have no on-chain explorer link and (in
-                      // the current chb schema) no counterpartyId; just show
-                      // the annotated name or an em dash.
+                      const cpName = counterpartyLabel(cpMeta);
+                      const cpAddr = addressFromUri(tx.counterpartyId);
+                      const cpExplorer = counterpartExplorerUrl(tx, chain);
+
+                      // Stripe rows: no counterparty link unless chb emits a
+                      // stripe:customer:cus_X URI.
                       if (tx.provider === "stripe") {
-                        const label = counterpartyLabel(cpMeta);
-                        return label ? (
-                          <div className="font-medium">{label}</div>
+                        if (!cpName && !cpExplorer) {
+                          return (
+                            <div className="text-xs text-muted-foreground">
+                              —
+                            </div>
+                          );
+                        }
+                        const label = cpName || "Customer";
+                        return cpExplorer ? (
+                          <a
+                            href={cpExplorer}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-medium hover:underline"
+                          >
+                            {label}
+                          </a>
                         ) : (
-                          <div className="text-xs text-muted-foreground">
-                            —
-                          </div>
+                          <div className="font-medium">{label}</div>
                         );
                       }
 
                       // Blockchain row.
-                      const cpName = counterpartyLabel(cpMeta);
-                      const cpAddr = addressFromUri(tx.counterpartyId);
-                      const txExplorer = txExplorerUrl(tx, chain);
-                      const explorerIcon = txExplorer ? (
-                        <a
-                          href={txExplorer}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-muted-foreground hover:text-foreground"
-                          title="View transaction on block explorer"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : null;
-                      let body: React.ReactNode;
+                      // - With a name: show name + small ExternalLink icon to
+                      //   the address on the block explorer.
+                      // - Without a name: show the WalletAddress (it already
+                      //   wraps the shortened address in its own explorer
+                      //   link, plus a copy button).
                       if (cpName) {
-                        body = (
-                          <div className="font-medium">{cpName}</div>
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <div className="font-medium">{cpName}</div>
+                            {cpExplorer && (
+                              <a
+                                href={cpExplorer}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-foreground"
+                                title="View address on block explorer"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
                         );
-                      } else if (cpAddr) {
-                        body = (
+                      }
+                      if (cpAddr) {
+                        return (
                           <WalletAddress
                             address={cpAddr}
                             chain={tx.chain || chain}
@@ -1375,18 +1412,9 @@ export function FinanceTransactionTable({
                             showCopy={true}
                           />
                         );
-                      } else {
-                        body = (
-                          <div className="text-xs text-muted-foreground">
-                            —
-                          </div>
-                        );
                       }
                       return (
-                        <div className="flex items-center gap-1.5">
-                          {body}
-                          {explorerIcon}
-                        </div>
+                        <div className="text-xs text-muted-foreground">—</div>
                       );
                     })()}
                     {isAdmin && tx.counterpartyId && (
