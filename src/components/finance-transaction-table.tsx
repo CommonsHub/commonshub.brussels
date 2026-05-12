@@ -705,13 +705,18 @@ export function FinanceTransactionTable({
   }, [transactions, viewScope]);
 
   const uniqueAccounts = useMemo(() => {
-    const accounts = new Set<string>();
+    // [slug, name] tuples — slug is what the URL stores and what the
+    // filter compares against; name is the human label shown in the
+    // dropdown.
+    const accounts = new Map<string, string>();
     transactions.forEach((tx) => {
-      if (tx.accountName) {
-        accounts.add(tx.accountName);
+      if (tx.accountSlug) {
+        accounts.set(tx.accountSlug, tx.accountName || tx.accountSlug);
       }
     });
-    return Array.from(accounts).sort();
+    return Array.from(accounts.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([slug, name]) => ({ slug, name }));
   }, [transactions]);
 
   // Calculate counts for each filter option
@@ -753,7 +758,7 @@ export function FinanceTransactionTable({
       const txCounterpart = counterpartLabelForTx(tx);
       const txCollective = tx.transactionMetadata?.collective || "commonshub";
       const txCategory = tx.transactionMetadata?.category || "other";
-      const txAccount = tx.accountName;
+      const txAccount = tx.accountSlug;
 
       // Helper to check if tx matches all filters except one
       const matchesFiltersExcept = (exceptFilter: string) => {
@@ -949,7 +954,7 @@ export function FinanceTransactionTable({
 
       // Filter by account
       if (accountFilter !== "all") {
-        if (tx.accountName !== accountFilter) return false;
+        if (tx.accountSlug !== accountFilter) return false;
       }
 
       return true;
@@ -1396,11 +1401,12 @@ export function FinanceTransactionTable({
                       </SelectItem>
                       {uniqueAccounts.map((account) => (
                         <SelectItem
-                          key={account}
-                          value={account}
+                          key={account.slug}
+                          value={account.slug}
                           className="text-xs"
                         >
-                          {account} ({filterCounts.accounts.get(account) || 0})
+                          {account.name} (
+                          {filterCounts.accounts.get(account.slug) || 0})
                         </SelectItem>
                       ))}
                     </SelectContent>
