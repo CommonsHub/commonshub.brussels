@@ -1028,6 +1028,9 @@ export function FinanceTransactionTable({
 
   // Totals grouped by collective × currency (same currency-merge rules as
   // `totals` above: EUR / EURe / EURb collapse to "EUR").
+  // Computed off the unfiltered `transactions` so every collective stays
+  // visible as a clickable dashboard card regardless of the current
+  // collective filter.
   const totalsByCollective = useMemo(() => {
     const canonical = (currency: string | undefined): string => {
       if (!currency) return "?";
@@ -1039,7 +1042,7 @@ export function FinanceTransactionTable({
       string,
       Map<string, { totalIn: number; totalOut: number; count: number }>
     >();
-    filteredTransactions.forEach((tx) => {
+    transactions.forEach((tx) => {
       const meta = effectiveTxMetadata(tx);
       const collective = meta.collective || "commonshub";
       const isIncoming = useNormalizedAmount
@@ -1083,16 +1086,11 @@ export function FinanceTransactionTable({
         return a.collective.localeCompare(b.collective);
       });
     // effectiveTxMetadata depends on the nostr annotation context, which
-    // is fetched via the hook closure — re-running on filteredTransactions
+    // is fetched via the hook closure — re-running on transactions
     // changes is good enough since annotation updates trigger re-renders
     // through React state anyway.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    filteredTransactions,
-    useNormalizedAmount,
-    accountAddress,
-    tokenSymbol,
-  ]);
+  }, [transactions, useNormalizedAmount, accountAddress, tokenSymbol]);
 
   const toggleTransaction = (txId: string) => {
     const newSelected = new Set(selectedTransactions);
@@ -1276,35 +1274,48 @@ export function FinanceTransactionTable({
         </div>
       )}
       {totalsByCollective.length > 0 && (
-        <div className="mb-6 rounded-md border bg-muted/20 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30">
-              <tr className="text-xs text-muted-foreground">
-                <th className="text-left py-2 px-4 font-medium">Collective</th>
-                <th className="text-right py-2 px-4 font-medium">Income</th>
-                <th className="text-right py-2 px-4 font-medium">Expenses</th>
-                <th className="text-right py-2 px-4 font-medium">Net</th>
-                <th className="text-right py-2 px-4 font-medium">Txs</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {totalsByCollective.flatMap((c) =>
-                c.perCurrency.map((row, i) => {
-                  const name =
-                    collectivesObj[c.collective]?.name || c.collective;
-                  return (
-                    <tr key={`${c.collective}:${row.currency}`}>
-                      <td className="py-2 px-4 font-medium">
-                        {i === 0 ? name : ""}
-                      </td>
-                      <td className="py-2 px-4 text-right whitespace-nowrap text-green-600">
-                        {formatSummaryAmount("+", row.totalIn, row.currency)}
-                      </td>
-                      <td className="py-2 px-4 text-right whitespace-nowrap text-red-600">
-                        {formatSummaryAmount("-", row.totalOut, row.currency)}
-                      </td>
-                      <td
-                        className={`py-2 px-4 text-right whitespace-nowrap font-semibold ${
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 px-4">
+          {totalsByCollective.map((c) => {
+            const name =
+              collectivesObj[c.collective]?.name || c.collective;
+            const isActive = collectiveFilter === c.collective;
+            const totalCount = c.perCurrency.reduce(
+              (sum, r) => sum + r.count,
+              0
+            );
+            return (
+              <button
+                key={c.collective}
+                type="button"
+                onClick={() =>
+                  setCollectiveFilter(isActive ? "all" : c.collective)
+                }
+                aria-pressed={isActive}
+                title={
+                  isActive
+                    ? `Showing only ${name} — click to clear`
+                    : `Filter by ${name}`
+                }
+                className={`text-left rounded-lg border p-3 transition-colors ${
+                  isActive
+                    ? "bg-primary/10 border-primary"
+                    : "bg-muted/20 border-border hover:bg-muted/40"
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-sm truncate">{name}</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {totalCount}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {c.perCurrency.map((row) => (
+                    <div
+                      key={row.currency}
+                      className="flex flex-col text-xs"
+                    >
+                      <span
+                        className={`whitespace-nowrap font-semibold ${
                           row.net >= 0 ? "text-green-600" : "text-red-600"
                         }`}
                       >
@@ -1313,16 +1324,29 @@ export function FinanceTransactionTable({
                           Math.abs(row.net),
                           row.currency
                         )}
-                      </td>
-                      <td className="py-2 px-4 text-right text-muted-foreground">
-                        {row.count}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </span>
+                      <div className="flex gap-2 text-muted-foreground">
+                        <span className="whitespace-nowrap">
+                          {formatSummaryAmount(
+                            "+",
+                            row.totalIn,
+                            row.currency
+                          )}
+                        </span>
+                        <span className="whitespace-nowrap">
+                          {formatSummaryAmount(
+                            "-",
+                            row.totalOut,
+                            row.currency
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
       <div className="overflow-x-auto">
