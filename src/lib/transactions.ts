@@ -11,6 +11,7 @@ import * as path from "path";
 import { DATA_DIR } from "./data-paths";
 import {
   addressFromUri,
+  ethereumAddressId,
   txHashFromUri,
   chainFromUri,
 } from "./nip73";
@@ -23,6 +24,7 @@ import type {
   CounterpartiesFile,
   CounterpartyMetadata,
 } from "@/types/counterparties";
+import settings from "@/settings/settings.json";
 
 export type Direction = "CREDIT" | "DEBIT";
 
@@ -119,6 +121,26 @@ export function readMonthlyTransactions(
   }
 }
 
+/**
+ * Fill in names for our own finance accounts so that when one of them
+ * shows up as a counterparty on another row (typical for INTERNAL
+ * transfers) it renders with a human label. Only writes when the
+ * generated/counterparties.json entry for that URI doesn't already
+ * carry a name.
+ */
+function seedWithFinanceAccounts(
+  map: Map<string, CounterpartyMetadata>
+): void {
+  for (const account of settings.finance.accounts) {
+    if (!account.address || !account.chain) continue;
+    const uri = ethereumAddressId(account.chain, account.address);
+    if (!uri) continue;
+    const existing = map.get(uri);
+    if (existing?.name?.trim()) continue;
+    map.set(uri, { ...(existing ?? {}), name: account.name });
+  }
+}
+
 export function readMonthlyCounterpartyMetadata(
   year: string,
   month: string
@@ -131,20 +153,22 @@ export function readMonthlyCounterpartyMetadata(
     "generated",
     "counterparties.json"
   );
-  if (!fs.existsSync(filePath)) return out;
-  try {
-    const data = JSON.parse(
-      fs.readFileSync(filePath, "utf-8")
-    ) as CounterpartiesFile;
-    for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
-      out.set(id, meta);
+  if (fs.existsSync(filePath)) {
+    try {
+      const data = JSON.parse(
+        fs.readFileSync(filePath, "utf-8")
+      ) as CounterpartiesFile;
+      for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
+        out.set(id, meta);
+      }
+    } catch (error) {
+      console.error(
+        `Error reading counterparty metadata for ${year}-${month}:`,
+        error
+      );
     }
-  } catch (error) {
-    console.error(
-      `Error reading counterparty metadata for ${year}-${month}:`,
-      error
-    );
   }
+  seedWithFinanceAccounts(out);
   return out;
 }
 

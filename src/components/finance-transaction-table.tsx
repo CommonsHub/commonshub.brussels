@@ -55,7 +55,28 @@ interface EnrichedTransaction {
   chain?: string | null;
   stripeChargeId?: string;
   type?: "CREDIT" | "DEBIT";
+  rawType?: "CREDIT" | "DEBIT" | "MINT" | "BURN" | "TRANSFER" | "INTERNAL";
   timestamp?: number;
+}
+
+function typeLabel(
+  rawType: EnrichedTransaction["rawType"],
+  isIncoming: boolean
+): string {
+  switch (rawType) {
+    case "MINT":
+      return "Mint";
+    case "BURN":
+      return "Burn";
+    case "INTERNAL":
+      return "Internal";
+    case "TRANSFER":
+      return "Transfer";
+    case "CREDIT":
+    case "DEBIT":
+    default:
+      return isIncoming ? "In" : "Out";
+  }
 }
 
 const CHAIN_EXPLORERS: Record<string, string> = {
@@ -511,7 +532,14 @@ export function FinanceTransactionTable({
     const counts = {
       months: new Map<string, number>(),
       accounts: new Map<string, number>(),
-      types: { in: 0, out: 0 },
+      types: {
+        in: 0,
+        out: 0,
+        mint: 0,
+        burn: 0,
+        internal: 0,
+        transfer: 0,
+      },
       collectives: new Map<string, number>(),
       categories: new Map<string, number>(),
       counterparts: new Map<string, number>(),
@@ -575,6 +603,14 @@ export function FinanceTransactionTable({
         if (exceptFilter !== "type" && typeFilter !== "all") {
           if (typeFilter === "in" && !isIncoming) return false;
           if (typeFilter === "out" && isIncoming) return false;
+          if (
+            typeFilter === "mint" ||
+            typeFilter === "burn" ||
+            typeFilter === "internal" ||
+            typeFilter === "transfer"
+          ) {
+            if ((tx.rawType ?? "").toLowerCase() !== typeFilter) return false;
+          }
         }
         if (
           exceptFilter !== "month" &&
@@ -611,6 +647,11 @@ export function FinanceTransactionTable({
         } else {
           counts.types.out++;
         }
+        const raw = (tx.rawType ?? "").toLowerCase();
+        if (raw === "mint") counts.types.mint++;
+        else if (raw === "burn") counts.types.burn++;
+        else if (raw === "internal") counts.types.internal++;
+        else if (raw === "transfer") counts.types.transfer++;
       }
 
       // Count for collective filter
@@ -692,6 +733,14 @@ export function FinanceTransactionTable({
       if (typeFilter !== "all") {
         if (typeFilter === "in" && !isIncoming) return false;
         if (typeFilter === "out" && isIncoming) return false;
+        if (
+          typeFilter === "mint" ||
+          typeFilter === "burn" ||
+          typeFilter === "internal" ||
+          typeFilter === "transfer"
+        ) {
+          if ((tx.rawType ?? "").toLowerCase() !== typeFilter) return false;
+        }
       }
 
       // Filter by month (year-scope only)
@@ -1045,6 +1094,26 @@ export function FinanceTransactionTable({
                   <SelectItem value="out" className="text-xs">
                     Out ({filterCounts.types.out})
                   </SelectItem>
+                  {filterCounts.types.mint > 0 && (
+                    <SelectItem value="mint" className="text-xs">
+                      Mint ({filterCounts.types.mint})
+                    </SelectItem>
+                  )}
+                  {filterCounts.types.burn > 0 && (
+                    <SelectItem value="burn" className="text-xs">
+                      Burn ({filterCounts.types.burn})
+                    </SelectItem>
+                  )}
+                  {filterCounts.types.transfer > 0 && (
+                    <SelectItem value="transfer" className="text-xs">
+                      Transfer ({filterCounts.types.transfer})
+                    </SelectItem>
+                  )}
+                  {filterCounts.types.internal > 0 && (
+                    <SelectItem value="internal" className="text-xs">
+                      Internal ({filterCounts.types.internal})
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </th>
@@ -1239,7 +1308,7 @@ export function FinanceTransactionTable({
                     variant={isIncoming ? "default" : "secondary"}
                     className="text-xs"
                   >
-                    {isIncoming ? "In" : "Out"}
+                    {typeLabel(tx.rawType, isIncoming)}
                   </Badge>
                 </td>
                 <td className="py-2.5 px-4">
