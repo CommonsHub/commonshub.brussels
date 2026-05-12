@@ -841,37 +841,56 @@ export function FinanceTransactionTable({
 
   // Calculate totals for filtered transactions
   const totals = useMemo(() => {
-    let totalIn = 0;
-    let totalOut = 0;
+    // Per-currency totals. EUR / EURe / EURb collapse to a single "EUR"
+    // bucket since they're all denominated in euros (Stripe EUR, Monerium
+    // EURe and EURb are all 1:1 with the euro).
+    const byCurrency = new Map<
+      string,
+      { totalIn: number; totalOut: number }
+    >();
+    const canonical = (currency: string | undefined): string => {
+      if (!currency) return "?";
+      if (currency === "EUR" || currency === "EURe" || currency === "EURb")
+        return "EUR";
+      return currency;
+    };
 
     filteredTransactions.forEach((tx) => {
       const isIncoming = useNormalizedAmount
         ? tx.type === "CREDIT"
         : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
 
-      const amount =
-        useNormalizedAmount && tx.normalizedAmount !== undefined
-          ? tx.normalizedAmount / 100
-          : Number(tx.amount ?? Number(tx.value) ?? 0);
-
-      if (isIncoming) {
-        totalIn += amount;
-      } else {
-        totalOut += amount;
-      }
+      const amount = Number(tx.amount ?? Number(tx.value) ?? 0);
+      const cur = canonical(tx.currency || tokenSymbol);
+      const entry = byCurrency.get(cur) ?? { totalIn: 0, totalOut: 0 };
+      if (isIncoming) entry.totalIn += amount;
+      else entry.totalOut += amount;
+      byCurrency.set(cur, entry);
     });
+
+    const perCurrency = Array.from(byCurrency.entries())
+      .map(([currency, v]) => ({
+        currency,
+        totalIn: v.totalIn,
+        totalOut: v.totalOut,
+        net: v.totalIn - v.totalOut,
+      }))
+      // Show EUR first, then alphabetical for the rest.
+      .sort((a, b) => {
+        if (a.currency === "EUR") return -1;
+        if (b.currency === "EUR") return 1;
+        return a.currency.localeCompare(b.currency);
+      });
 
     return {
       count: filteredTransactions.length,
-      totalIn,
-      totalOut,
-      net: totalIn - totalOut,
+      perCurrency,
     };
   }, [
     filteredTransactions,
     useNormalizedAmount,
     accountAddress,
-    tokenDecimals,
+    tokenSymbol,
   ]);
 
   const toggleTransaction = (txId: string) => {
@@ -1546,13 +1565,13 @@ export function FinanceTransactionTable({
                     return (
                       <>
                         <div
-                          className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
+                          className={`whitespace-nowrap font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
                         >
                           {isIncoming ? "+" : "-"}
                           {gross.value}
                         </div>
                         {net ? (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="whitespace-nowrap text-xs text-muted-foreground">
                             net: {isIncoming ? "+" : "-"}
                             {net.value}
                             {net.suffix ? ` ${net.suffix}` : ""}
@@ -1607,39 +1626,50 @@ export function FinanceTransactionTable({
               </div>
             </td>
             <td className="py-3 px-4">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-green-600">
-                    +€
-                    {totals.totalIn.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-red-600">
-                    -€
-                    {totals.totalOut.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 pt-1 border-t">
-                  <span
-                    className={
-                      totals.net >= 0 ? "text-green-600" : "text-red-600"
-                    }
-                  >
-                    {totals.net >= 0 ? "+" : ""}€
-                    {Math.abs(totals.net).toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                  <span className="text-xs text-muted-foreground">net</span>
-                </div>
+              <div className="flex flex-col gap-3">
+                {totals.perCurrency.map((row) => {
+                  const isEur = row.currency === "EUR";
+                  // Fiat currencies use 2 fractional digits; tokens like CHT
+                  // are typically integer / few decimals — let toLocaleString
+                  // pick within a 0..6 window.
+                  const fmt = (n: number) =>
+                    n.toLocaleString("en-US", {
+                      minimumFractionDigits: isEur ? 2 : 0,
+                      maximumFractionDigits: isEur ? 2 : 6,
+                    });
+                  const symbol = isEur
+                    ? "€"
+                    : ` ${row.currency}`;
+                  const formatSigned = (sign: "+" | "-", n: number) =>
+                    isEur
+                      ? `${sign}${symbol}${fmt(n)}`
+                      : `${sign}${fmt(n)}${symbol}`;
+                  return (
+                    <div
+                      key={row.currency}
+                      className="flex flex-col gap-1"
+                    >
+                      <span className="whitespace-nowrap text-green-600">
+                        {formatSigned("+", row.totalIn)}
+                      </span>
+                      <span className="whitespace-nowrap text-red-600">
+                        {formatSigned("-", row.totalOut)}
+                      </span>
+                      <div className="flex items-center gap-2 pt-1 border-t">
+                        <span
+                          className={`whitespace-nowrap ${
+                            row.net >= 0 ? "text-green-600" : "text-red-600"
+                          }`}
+                        >
+                          {formatSigned(row.net >= 0 ? "+" : "-", Math.abs(row.net))}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          net
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </td>
             <td className="py-3 px-4"></td>
