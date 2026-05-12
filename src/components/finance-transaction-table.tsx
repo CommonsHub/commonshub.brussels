@@ -745,9 +745,7 @@ export function FinanceTransactionTable({
 
       // Get transaction values
       const amount =
-        useNormalizedAmount && tx.normalizedAmount !== undefined
-          ? tx.normalizedAmount / 100
-          : Number(tx.amount ?? Number(tx.value) ?? 0);
+        Math.abs(Number(tx.amount ?? Number(tx.value) ?? 0));
 
       const timestamp = tx.timestamp || parseInt(tx.timeStamp);
       const date = new Date(timestamp * 1000);
@@ -903,9 +901,7 @@ export function FinanceTransactionTable({
 
       // Filter by amount
       const amount =
-        useNormalizedAmount && tx.normalizedAmount !== undefined
-          ? tx.normalizedAmount / 100
-          : Number(tx.amount ?? Number(tx.value) ?? 0);
+        Math.abs(Number(tx.amount ?? Number(tx.value) ?? 0));
       if (minAmount && amount < parseFloat(minAmount)) return false;
       if (maxAmount && amount > parseFloat(maxAmount)) return false;
 
