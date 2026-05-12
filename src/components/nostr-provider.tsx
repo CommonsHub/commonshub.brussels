@@ -26,7 +26,7 @@ const STORAGE_SENT = "nostr_sent";
 const SENT_CAP = 500;
 const KIND_ANNOTATION = 1111;
 
-type OutboxItem = {
+export type OutboxItem = {
   event: NostrEvent;
   uri: string;
   attempts: number;
@@ -48,6 +48,8 @@ type NostrContextValue = {
   pubkey: string;
   ready: boolean;
   outboxCount: number;
+  /** Pending outbox events, deduped to the latest event per `i` URI. */
+  outbox: OutboxItem[];
   publish: (
     uri: string,
     payload: { content?: string; tags?: Record<string, string | null | undefined> }
@@ -55,6 +57,7 @@ type NostrContextValue = {
   watch: (uri: string) => void;
   getAnnotation: (uri: string | null | undefined) => Annotation | undefined;
   sync: () => void;
+  removeFromOutbox: (eventIds: string[]) => void;
 };
 
 const NostrContext = createContext<NostrContextValue | null>(null);
@@ -346,7 +349,13 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       };
       const event = finalizeEvent(unsigned, secretKey);
       const item: OutboxItem = { event, uri, attempts: 0 };
-      outboxRef.current = [...outboxRef.current, item];
+      // Replace any pending event for the same URI: the new event is a full
+      // snapshot that already merges in the previous tags, so sending the
+      // earlier one is just wasted bandwidth.
+      outboxRef.current = [
+        ...outboxRef.current.filter((i) => i.uri !== uri),
+        item,
+      ];
       setOutbox(outboxRef.current);
       await flushOutbox();
     },
@@ -380,6 +389,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     flushOutbox();
   }, [flushOutbox]);
 
+  const removeFromOutbox = useCallback((eventIds: string[]) => {
+    const ids = new Set(eventIds);
+    setOutbox((prev) => prev.filter((i) => !ids.has(i.event.id)));
+  }, []);
+
   // ---- expose globals for console inspection ----
   useEffect(() => {
     if (typeof window === "undefined" || !secretKey) return;
@@ -406,12 +420,23 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       pubkey,
       ready: Boolean(secretKey),
       outboxCount: outbox.length,
+      outbox,
       publish,
       watch,
       getAnnotation,
       sync,
+      removeFromOutbox,
     }),
-    [pubkey, secretKey, outbox.length, publish, watch, getAnnotation, sync]
+    [
+      pubkey,
+      secretKey,
+      outbox,
+      publish,
+      watch,
+      getAnnotation,
+      sync,
+      removeFromOutbox,
+    ]
   );
 
   return <NostrContext.Provider value={value}>{children}</NostrContext.Provider>;
@@ -427,10 +452,12 @@ export function useNostr(): NostrContextValue {
       pubkey: "",
       ready: false,
       outboxCount: 0,
+      outbox: [],
       publish: async () => {},
       watch: () => {},
       getAnnotation: () => undefined,
       sync: () => {},
+      removeFromOutbox: () => {},
     };
   }
   return ctx;
