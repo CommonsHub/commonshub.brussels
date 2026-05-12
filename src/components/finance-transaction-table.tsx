@@ -44,7 +44,9 @@ interface EnrichedTransaction extends TransactionWithMonerium {
   counterpartyMetadata?: CounterpartyMetadata;
   accountName?: string;
   accountSlug?: string;
-  normalizedAmount?: number; // in cents
+  normalizedAmount?: number;
+  amount?: number;
+  currency?: string;
   type?: "CREDIT" | "DEBIT";
   timestamp?: number;
 }
@@ -60,6 +62,85 @@ interface FinanceTransactionTableProps {
   showAccountColumn?: boolean;
   showExportButton?: boolean;
   useNormalizedAmount?: boolean;
+  /** "month" swaps the month-filter for a week-filter and assumes every row
+   *  is in the same calendar month. */
+  viewScope?: "year" | "month";
+}
+
+const EUR_SYMBOLS = new Set(["EUR", "EURe", "EURb"]);
+
+/** Format one row's amount honouring its own currency + sensible decimals. */
+function formatRowAmount(
+  tx: EnrichedTransaction,
+  fallbackSymbol: string,
+  fallbackDecimals: number
+): { value: string; suffix: string } {
+  const currency = tx.currency || fallbackSymbol || "";
+  const isEur = EUR_SYMBOLS.has(currency);
+
+  // tx.amount/normalizedAmount are already decoded (EUR or token units).
+  // For old single-account views without those, fall back to raw value/decimals.
+  let decoded: number | undefined;
+  if (typeof tx.amount === "number") decoded = tx.amount;
+  else if (typeof tx.normalizedAmount === "number") decoded = tx.normalizedAmount;
+
+  let formatted: string;
+  if (decoded !== undefined) {
+    const abs = Math.abs(decoded);
+    if (isEur) {
+      formatted = abs.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    } else {
+      const isInt = Number.isInteger(abs);
+      formatted = abs.toLocaleString("en-US", {
+        minimumFractionDigits: isInt ? 0 : 2,
+        maximumFractionDigits: isInt ? 0 : 6,
+      });
+    }
+  } else {
+    // legacy raw-integer string path
+    try {
+      const num = BigInt(tx.value);
+      const divisor = BigInt(10 ** fallbackDecimals);
+      const integerPart = num / divisor;
+      const fractionalPart = num % divisor;
+      const fracStr = fractionalPart
+        .toString()
+        .padStart(fallbackDecimals, "0")
+        .replace(/0+$/, "");
+      const intStr = integerPart
+        .toString()
+        .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      formatted = fracStr ? `${intStr}.${fracStr}` : intStr;
+    } catch {
+      formatted = "?";
+    }
+  }
+
+  return isEur
+    ? { value: `€${formatted}`, suffix: currency === "EUR" ? "" : currency }
+    : { value: formatted, suffix: currency };
+}
+
+/** Week-of-month bucket for a given timestamp (1-indexed). */
+function weekOfMonth(timestamp: number): number {
+  const day = new Date(timestamp * 1000).getDate();
+  return Math.min(5, Math.floor((day - 1) / 7) + 1);
+}
+
+function weekLabel(year: number, month: number, week: number): string {
+  // month is 1-12 here. Build inclusive day range.
+  const startDay = (week - 1) * 7 + 1;
+  const endDate = new Date(year, month, 0); // last day of month
+  const endDay = Math.min(endDate.getDate(), week * 7);
+  const fmt = (d: number) =>
+    new Date(year, month - 1, d).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  return `Week ${week} (${fmt(startDay)}–${fmt(endDay)})`;
 }
 
 function formatAmount(
@@ -135,6 +216,7 @@ export function FinanceTransactionTable({
   showAccountColumn = false,
   showExportButton = false,
   useNormalizedAmount = false,
+  viewScope = "year",
 }: FinanceTransactionTableProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -193,6 +275,7 @@ export function FinanceTransactionTable({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [weekFilter, setWeekFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
 
   // Initialize filters from URL on mount
@@ -204,6 +287,8 @@ export function FinanceTransactionTable({
     const category = searchParams.get("category");
     const type = searchParams.get("type");
     const month = searchParams.get("month");
+    const week = searchParams.get("week");
+    const account = searchParams.get("account");
 
     if (counterpart) setCounterpartFilter(counterpart);
     if (min) setMinAmount(min);
@@ -212,6 +297,8 @@ export function FinanceTransactionTable({
     if (category) setCategoryFilter(category);
     if (type) setTypeFilter(type);
     if (month) setMonthFilter(month);
+    if (week) setWeekFilter(week);
+    if (account) setAccountFilter(account);
   }, [searchParams]);
 
   // Update URL when filters change
@@ -261,6 +348,18 @@ export function FinanceTransactionTable({
       params.delete("month");
     }
 
+    if (weekFilter !== "all") {
+      params.set("week", weekFilter);
+    } else {
+      params.delete("week");
+    }
+
+    if (accountFilter !== "all") {
+      params.set("account", accountFilter);
+    } else {
+      params.delete("account");
+    }
+
     const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}`;
     router.replace(newUrl, { scroll: false });
   }, [
@@ -271,6 +370,8 @@ export function FinanceTransactionTable({
     categoryFilter,
     typeFilter,
     monthFilter,
+    weekFilter,
+    accountFilter,
     router,
   ]);
 
@@ -317,6 +418,26 @@ export function FinanceTransactionTable({
       return dateB.getTime() - dateA.getTime();
     });
   }, [transactions]);
+
+  // Weeks (1..5) present in the data and the calendar-month they belong to.
+  const weekContext = useMemo(() => {
+    if (viewScope !== "month") return null;
+    const weeks = new Set<number>();
+    let year: number | null = null;
+    let month: number | null = null;
+    for (const tx of transactions) {
+      const ts = tx.timestamp || parseInt(tx.timeStamp || "0");
+      if (!ts) continue;
+      const d = new Date(ts * 1000);
+      if (year === null) {
+        year = d.getFullYear();
+        month = d.getMonth() + 1;
+      }
+      weeks.add(weekOfMonth(ts));
+    }
+    if (year === null || month === null) return null;
+    return { year, month, weeks: Array.from(weeks).sort((a, b) => a - b) };
+  }, [transactions, viewScope]);
 
   const uniqueAccounts = useMemo(() => {
     const accounts = new Set<string>();
@@ -516,8 +637,8 @@ export function FinanceTransactionTable({
         if (typeFilter === "out" && isIncoming) return false;
       }
 
-      // Filter by month
-      if (monthFilter !== "all") {
+      // Filter by month (year-scope only)
+      if (viewScope === "year" && monthFilter !== "all") {
         const timestamp = tx.timestamp || parseInt(tx.timeStamp);
         const date = new Date(timestamp * 1000);
         const monthYear = date.toLocaleDateString("en-US", {
@@ -525,6 +646,12 @@ export function FinanceTransactionTable({
           month: "short",
         });
         if (monthYear !== monthFilter) return false;
+      }
+
+      // Filter by week (month-scope only)
+      if (viewScope === "month" && weekFilter !== "all") {
+        const timestamp = tx.timestamp || parseInt(tx.timeStamp);
+        if (String(weekOfMonth(timestamp)) !== weekFilter) return false;
       }
 
       // Filter by account
@@ -543,10 +670,12 @@ export function FinanceTransactionTable({
     categoryFilter,
     typeFilter,
     monthFilter,
+    weekFilter,
     accountFilter,
     tokenDecimals,
     accountAddress,
     useNormalizedAmount,
+    viewScope,
   ]);
 
   // Calculate totals for filtered transactions
@@ -667,8 +796,11 @@ export function FinanceTransactionTable({
         hour: "2-digit",
         minute: "2-digit",
       });
-      const isIncoming = tx.to?.toLowerCase() === accountAddress?.toLowerCase();
-      const amount = formatAmount(tx.value, tokenDecimals, tokenSymbol);
+      const isIncoming = useNormalizedAmount
+        ? tx.type === "CREDIT"
+        : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
+      const a = formatRowAmount(tx, tokenSymbol, tokenDecimals);
+      const amount = a.suffix ? `${a.value} ${a.suffix}` : a.value;
 
       const row = [
         `${dateStr} ${timeStr}`,
@@ -774,21 +906,43 @@ export function FinanceTransactionTable({
           <tr className="bg-muted/10 border-b">
             {isAdmin && <th className="py-2 px-4"></th>}
             <th className="py-2 px-4">
-              <Select value={monthFilter} onValueChange={setMonthFilter}>
-                <SelectTrigger className="h-7 text-xs w-full">
-                  <SelectValue placeholder="All months" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">
-                    All months ({totals.count})
-                  </SelectItem>
-                  {uniqueMonths.map((month) => (
-                    <SelectItem key={month} value={month} className="text-xs">
-                      {month} ({filterCounts.months.get(month) || 0})
+              {viewScope === "month" && weekContext ? (
+                <Select value={weekFilter} onValueChange={setWeekFilter}>
+                  <SelectTrigger className="h-7 text-xs w-full">
+                    <SelectValue placeholder="All weeks" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All weeks ({totals.count})
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {weekContext.weeks.map((w) => (
+                      <SelectItem
+                        key={w}
+                        value={String(w)}
+                        className="text-xs"
+                      >
+                        {weekLabel(weekContext.year, weekContext.month, w)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={monthFilter} onValueChange={setMonthFilter}>
+                  <SelectTrigger className="h-7 text-xs w-full">
+                    <SelectValue placeholder="All months" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All months ({totals.count})
+                    </SelectItem>
+                    {uniqueMonths.map((month) => (
+                      <SelectItem key={month} value={month} className="text-xs">
+                        {month} ({filterCounts.months.get(month) || 0})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </th>
             {showAccountColumn && (
               <th className="py-2 px-4">
@@ -1014,17 +1168,24 @@ export function FinanceTransactionTable({
                   </Badge>
                 </td>
                 <td className="py-2.5 px-4">
-                  <div
-                    className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {isIncoming ? "+" : "-"}
-                    {useNormalizedAmount && tx.normalizedAmount !== undefined
-                      ? formatNormalizedAmount(tx.normalizedAmount, tokenSymbol)
-                      : formatAmount(tx.value, tokenDecimals, tokenSymbol)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {tokenSymbol}
-                  </div>
+                  {(() => {
+                    const a = formatRowAmount(tx, tokenSymbol, tokenDecimals);
+                    return (
+                      <>
+                        <div
+                          className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
+                        >
+                          {isIncoming ? "+" : "-"}
+                          {a.value}
+                        </div>
+                        {a.suffix && (
+                          <div className="text-xs text-muted-foreground">
+                            {a.suffix}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </td>
                 {isAdmin && (
                   <>

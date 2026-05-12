@@ -211,6 +211,7 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
             showAccountColumn={true}
             showExportButton={true}
             useNormalizedAmount={true}
+            viewScope="month"
           />
         </CardContent>
       </Card>
