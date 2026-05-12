@@ -8,9 +8,6 @@ import * as path from "path";
 import settings from "@/settings/settings.json";
 import type { CachedMessage } from "./discord-cache";
 import { getLocalImagePath } from "./discord-cache";
-import type { StripeTransaction } from "./stripe";
-import type { TokenTransfer } from "./etherscan";
-import { parseTokenValue } from "./etherscan";
 import { getProxiedImageUrl } from "./image-proxy";
 import { DATA_DIR } from "./data-paths";
 
@@ -669,131 +666,85 @@ function getTrackedAddresses(): Set<string> {
 }
 
 /**
- * Check if a transaction is an internal transfer
+ * Consolidated transaction shape written by chb's pipeline to
+ * data/{year}/{month}/generated/transactions.json
  */
+interface ConsolidatedTx {
+  id: string;
+  txHash?: string;
+  provider: "etherscan" | "stripe";
+  chain: string | null;
+  account: string;
+  accountSlug: string;
+  accountName: string;
+  currency: string;
+  value: string;
+  amount: number;
+  netAmount: number;
+  grossAmount: number;
+  normalizedAmount: number;
+  fee: number;
+  type: "CREDIT" | "DEBIT";
+  counterparty: string;
+  timestamp: number;
+  tags?: string[][];
+  metadata?: Record<string, unknown>;
+}
+
+function tagValue(tx: ConsolidatedTx, key: string): string | undefined {
+  for (const t of tx.tags ?? []) {
+    if (t[0] === key && typeof t[1] === "string") return t[1];
+  }
+  return undefined;
+}
+
+function txFromAddress(tx: ConsolidatedTx): string | undefined {
+  return (tagValue(tx, "from") ??
+    (tx.type === "CREDIT" ? tx.counterparty : tx.account) ??
+    undefined)?.toLowerCase();
+}
+
+function txToAddress(tx: ConsolidatedTx): string | undefined {
+  return (tagValue(tx, "to") ??
+    (tx.type === "CREDIT" ? tx.account : tx.counterparty) ??
+    undefined)?.toLowerCase();
+}
+
+/** Both from and to are accounts we control → internal transfer. */
 function isInternalTransfer(
-  transaction: StripeTransaction | TokenTransfer,
+  tx: ConsolidatedTx,
   trackedAddresses: Set<string>
 ): boolean {
-  // Stripe transactions are never internal transfers (all external)
-  if ("reporting_category" in transaction) {
-    return false;
-  }
-
-  // Etherscan token transfer
-  const tokenTransfer = transaction as TokenTransfer;
-  const fromAddr = tokenTransfer.from?.toLowerCase();
-  const toAddr = tokenTransfer.to?.toLowerCase();
-
-  // If both from and to are in tracked addresses, it's internal
-  return (
-    fromAddr !== undefined &&
-    toAddr !== undefined &&
-    trackedAddresses.has(fromAddr) &&
-    trackedAddresses.has(toAddr)
-  );
+  if (tx.provider !== "etherscan") return false;
+  const fromAddr = txFromAddress(tx);
+  const toAddr = txToAddress(tx);
+  if (!fromAddr || !toAddr) return false;
+  return trackedAddresses.has(fromAddr) && trackedAddresses.has(toAddr);
 }
 
 /**
- * Read financial transactions for a specific month
+ * Read the per-month consolidated transactions file produced by chb.
  */
-function readFinancialTransactions(
+function readMonthlyTransactions(
   year: string,
   month: string
-): {
-  stripe: StripeTransaction[];
-  etherscan: Map<string, TokenTransfer[]>;
-} {
-  const result = {
-    stripe: [] as StripeTransaction[],
-    etherscan: new Map<string, TokenTransfer[]>(),
-  };
-
-  // Read Stripe transactions
-  // Get accountId from settings
-  const stripeAccount = settings.finance.accounts.find(
-    (a) => a.provider === "stripe"
+): ConsolidatedTx[] {
+  const filePath = path.join(
+    DATA_DIR,
+    year,
+    month,
+    "generated",
+    "transactions.json"
   );
-  if (stripeAccount) {
-    const stripePath = path.join(
-      DATA_DIR,
-      year,
-      month,
-      "finance",
-      "stripe",
-      "transactions.json"
-    );
-    if (fs.existsSync(stripePath)) {
-      try {
-        const content = fs.readFileSync(stripePath, "utf-8");
-        const data = JSON.parse(content) as {
-          transactions: StripeTransaction[];
-        };
-        result.stripe = data.transactions || [];
-      } catch (error) {
-        console.error(
-          `Error reading Stripe transactions for ${year}-${month}:`,
-          error
-        );
-      }
-    }
-  }
-
-  // Read blockchain transactions (Gnosis, Celo, etc.)
-  // New structure: data/{year}/{month}/finance/{chain}/{slug}.{tokenSymbol}.json
-  for (const account of settings.finance.accounts) {
-    if (account.provider === "etherscan" && account.chain && account.token) {
-      const accountFilePath = path.join(
-        DATA_DIR,
-        year,
-        month,
-        "finance",
-        account.chain,
-        `${account.slug}.${account.token.symbol}.json`
-      );
-
-      if (fs.existsSync(accountFilePath)) {
-        try {
-          const content = fs.readFileSync(accountFilePath, "utf-8");
-          const data = JSON.parse(content) as { transactions: TokenTransfer[] };
-          result.etherscan.set(account.slug, data.transactions || []);
-        } catch (error) {
-          console.error(
-            `Error reading ${account.chain} transactions for ${account.slug} in ${year}-${month}:`,
-            error
-          );
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
-/**
- * Read CHT (ContributionToken) transactions for a specific month
- */
-function readCHTTransactions(year: string, month: string): TokenTransfer[] {
-  // Data-sync writes the file as {slug}.{symbol}.json on the chain directory.
-  const chain = settings.contributionToken?.chain || "celo";
-  const symbol = settings.contributionToken?.symbol || "CHT";
-  const chainDir = path.join(DATA_DIR, year, month, "finance", chain);
-
-  const candidates = [
-    path.join(chainDir, `cht.${symbol}.json`),
-    path.join(chainDir, `${symbol}.json`),
-  ];
-
-  const chtPath = candidates.find((p) => fs.existsSync(p));
-  if (!chtPath) return [];
-
+  if (!fs.existsSync(filePath)) return [];
   try {
-    const content = fs.readFileSync(chtPath, "utf-8");
-    const data = JSON.parse(content) as { transactions: TokenTransfer[] };
-    return data.transactions || [];
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+      transactions?: ConsolidatedTx[];
+    };
+    return data.transactions ?? [];
   } catch (error) {
     console.error(
-      `Error reading CHT transactions for ${year}-${month}:`,
+      `Error reading consolidated transactions for ${year}-${month}:`,
       error
     );
     return [];
@@ -804,22 +755,22 @@ function readCHTTransactions(year: string, month: string): TokenTransfer[] {
  * Calculate token minting and burning for a specific month from CHT transactions
  * Filters out outlier transactions (3+ orders of magnitude different) if they sum to zero
  */
-function calculateTokenActivity(chtTransactions: TokenTransfer[]): TokenData {
+function calculateTokenActivity(chtTransactions: ConsolidatedTx[]): TokenData {
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
   // First pass: calculate all values and find median for outlier detection
   const allValues: number[] = [];
   const transactionData: Array<{
-    tx: TokenTransfer;
+    tx: ConsolidatedTx;
     value: number;
     toAddr: string;
     fromAddr: string;
   }> = [];
 
   for (const tx of chtTransactions) {
-    const value = parseTokenValue(tx.value, parseInt(tx.tokenDecimal));
-    const toAddr = tx.to?.toLowerCase();
-    const fromAddr = tx.from?.toLowerCase();
+    const value = Math.abs(tx.amount);
+    const toAddr = txToAddress(tx) ?? "";
+    const fromAddr = txFromAddress(tx) ?? "";
 
     allValues.push(value);
     transactionData.push({ tx, value, toAddr, fromAddr });
@@ -921,7 +872,7 @@ export function calculateMonthlyFinancials(
   year: string,
   month: string
 ): FinancialData {
-  const transactions = readFinancialTransactions(year, month);
+  const transactions = readMonthlyTransactions(year, month);
   const trackedAddresses = getTrackedAddresses();
   const byAccount: Map<
     string,
@@ -937,79 +888,51 @@ export function calculateMonthlyFinancials(
   let totalIncome = 0;
   let totalExpenses = 0;
 
-  // Calculate token activity from CHT transactions
-  const chtTransactions = readCHTTransactions(year, month);
+  // CHT (contribution token) token activity
+  const chtChain = settings.contributionToken?.chain ?? "celo";
+  const chtSymbol = settings.contributionToken?.symbol ?? "CHT";
+  const chtTransactions = transactions.filter(
+    (tx) =>
+      tx.provider === "etherscan" &&
+      tx.chain === chtChain &&
+      tx.currency === chtSymbol
+  );
   const tokens = calculateTokenActivity(chtTransactions);
 
-  // Process Stripe transactions
-  const stripeAccount = settings.finance.accounts.find(
-    (a) => a.provider === "stripe"
-  );
-  if (stripeAccount) {
-    const stripeData = {
-      slug: stripeAccount.slug,
-      name: stripeAccount.name,
-      provider: "stripe",
-      income: 0,
-      expenses: 0,
-    };
-
-    for (const tx of transactions.stripe) {
-      // Convert cents to euros
-      const amount = tx.net / 100;
-
-      if (amount > 0) {
-        stripeData.income += amount;
-        totalIncome += amount;
-      } else if (amount < 0) {
-        stripeData.expenses += Math.abs(amount);
-        totalExpenses += Math.abs(amount);
-      }
-    }
-
-    byAccount.set(stripeAccount.slug, stripeData);
-  }
-
-  // Process Etherscan transactions
-  for (const [accountSlug, txList] of transactions.etherscan.entries()) {
+  for (const tx of transactions) {
     const account = settings.finance.accounts.find(
-      (a) => a.slug === accountSlug
+      (a) => a.slug === tx.accountSlug
     );
-    if (!account || !account.address) continue;
+    if (!account) continue;
 
-    const accountData = {
+    // Skip internal transfers between accounts we control.
+    if (isInternalTransfer(tx, trackedAddresses)) continue;
+
+    const existing = byAccount.get(account.slug) ?? {
       slug: account.slug,
       name: account.name,
-      provider: "etherscan",
+      provider: account.provider,
       income: 0,
       expenses: 0,
     };
 
-    const accountAddress = account.address.toLowerCase();
+    // Stripe rows have currency already normalised to the account currency
+    // (EUR/USD/…); blockchain rows use tx.amount in the account's token unit.
+    // For both, sign comes from tx.type (CREDIT = into account, DEBIT = out).
+    const value =
+      tx.provider === "stripe"
+        ? Math.abs(tx.normalizedAmount)
+        : Math.abs(tx.amount);
 
-    for (const tx of txList) {
-      // Skip internal transfers
-      if (isInternalTransfer(tx, trackedAddresses)) {
-        continue;
-      }
-
-      const value = parseTokenValue(tx.value, parseInt(tx.tokenDecimal));
-      const toAddr = tx.to?.toLowerCase();
-      const fromAddr = tx.from?.toLowerCase();
-
-      // Incoming transaction
-      if (toAddr === accountAddress && fromAddr !== accountAddress) {
-        accountData.income += value;
-        totalIncome += value;
-      }
-      // Outgoing transaction
-      else if (fromAddr === accountAddress && toAddr !== accountAddress) {
-        accountData.expenses += value;
-        totalExpenses += value;
-      }
+    if (tx.type === "CREDIT") {
+      existing.income += value;
+      totalIncome += value;
+    } else if (tx.type === "DEBIT") {
+      existing.expenses += value;
+      totalExpenses += value;
     }
 
-    byAccount.set(account.slug, accountData);
+    byAccount.set(account.slug, existing);
   }
 
   return {
