@@ -68,6 +68,14 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link
+                  href="/volunteer"
+                  className="text-background/70 hover:text-background transition-colors text-sm"
+                >
+                  Volunteer
+                </Link>
+              </li>
+              <li>
                 <a
                   href="https://paragraph.com/@commonshub_bxl?modal=subscribe"
                   target="_blank"
