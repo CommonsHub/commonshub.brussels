@@ -1336,8 +1336,6 @@ export function FinanceTransactionTable({
                       </div>
                     ) : tx.provider === "stripe" ? (
                       (() => {
-                        const label =
-                          counterpartyLabel(cpMeta) || tx.counterparty || "";
                         const cusId = tx.counterpartyId?.startsWith(
                           "stripe:customer:"
                         )
@@ -1345,17 +1343,26 @@ export function FinanceTransactionTable({
                               "stripe:customer:".length
                             )
                           : null;
-                        return cusId ? (
+                        if (!cusId) {
+                          // Stripe rows without a linked customer have no real
+                          // counterpart — tx.counterparty here is the charge
+                          // description, which belongs in the Details column.
+                          return (
+                            <div className="text-xs text-muted-foreground">
+                              —
+                            </div>
+                          );
+                        }
+                        const label = counterpartyLabel(cpMeta) || cusId;
+                        return (
                           <a
                             href={`https://dashboard.stripe.com/customers/${cusId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-medium hover:underline"
                           >
-                            {label || cusId}
+                            {label}
                           </a>
-                        ) : (
-                          <div className="font-medium">{label}</div>
                         );
                       })()
                     ) : (
@@ -1390,6 +1397,15 @@ export function FinanceTransactionTable({
                           : tx.moneriumOrder.memo}
                       </div>
                     )}
+                    {!txMeta.description &&
+                      tx.provider === "stripe" &&
+                      tx.counterparty && (
+                        <div className="text-xs text-muted-foreground italic">
+                          {tx.counterparty.length > 60
+                            ? tx.counterparty.slice(0, 60) + "…"
+                            : tx.counterparty}
+                        </div>
+                      )}
                     {isAdmin && tx.transactionUri && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
