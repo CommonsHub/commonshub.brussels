@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import * as fs from "fs";
 import * as path from "path";
 import settings from "@/settings/settings.json";
-import { isAdmin } from "@/lib/admin-check";
+import { isAdmin, isMember } from "@/lib/admin-check";
 import type { TokenTransfer } from "@/lib/etherscan";
 import type { MoneriumOrder } from "@/lib/monerium-node";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -283,8 +283,9 @@ export default async function YearlyFinancePage({ params }: PageProps) {
     notFound();
   }
 
-  // Check if user is admin
-  const userIsAdmin = await isAdmin();
+  // Check if user is admin / has the member role
+  const [userIsAdmin, userIsMember] = await Promise.all([isAdmin(), isMember()]);
+  const canEdit = userIsAdmin || userIsMember;
 
   // Load Monerium data if admin
   let moneriumOrdersByTxHash = new Map<string, MoneriumOrder>();
@@ -584,6 +585,7 @@ export default async function YearlyFinancePage({ params }: PageProps) {
             tokenDecimals={parseInt(account.token.decimals.toString())}
             chain={account.chain}
             isAdmin={userIsAdmin}
+            canEdit={canEdit}
           />
         </CardContent>
       </Card>

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { isAdmin } from "@/lib/admin-check";
+import { isAdmin, isMember } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import {
@@ -23,7 +23,8 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
     notFound();
   }
 
-  const userIsAdmin = await isAdmin();
+  const [userIsAdmin, userIsMember] = await Promise.all([isAdmin(), isMember()]);
+  const canEdit = userIsAdmin || userIsMember;
   const counterpartyMetadataMap = readMonthlyCounterpartyMetadata(year, month);
 
   const augmentedTransactions = transactions
@@ -60,6 +61,7 @@ export default async function MonthlyTransactionsPage({ params }: PageProps) {
             tokenDecimals={2}
             chain="gnosis"
             isAdmin={userIsAdmin}
+            canEdit={canEdit}
             showAccountColumn={true}
             showExportButton={true}
             useNormalizedAmount={true}

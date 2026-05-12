@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import * as fs from "fs";
 import * as path from "path";
-import { isAdmin } from "@/lib/admin-check";
+import { isAdmin, isMember } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import { DATA_DIR } from "@/lib/data-paths";
@@ -44,7 +44,8 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
 
   if (transactions.length === 0) notFound();
 
-  const userIsAdmin = await isAdmin();
+  const [userIsAdmin, userIsMember] = await Promise.all([isAdmin(), isMember()]);
+  const canEdit = userIsAdmin || userIsMember;
 
   const augmentedTransactions = transactions
     .map((tx) => augmentTransaction(tx, counterpartyMetadataMap))
@@ -75,6 +76,7 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
             tokenDecimals={2}
             chain="gnosis"
             isAdmin={userIsAdmin}
+            canEdit={canEdit}
             showAccountColumn={true}
             showExportButton={true}
             useNormalizedAmount={true}

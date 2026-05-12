@@ -2,6 +2,18 @@ import { auth } from "@/auth";
 import settings from "@/settings/settings.json";
 
 /**
+ * Check if the current user has the Discord "member" role on the guild.
+ * Used to gate inline editing on the finance tables.
+ */
+export async function isMember(): Promise<boolean> {
+  const session = await auth();
+  const roles = (session?.user as { roles?: string[] } | undefined)?.roles;
+  if (!roles) return false;
+  const memberRoleId = settings.discord.roles.member;
+  return roles.includes(memberRoleId);
+}
+
+/**
  * Check if the current user is an admin of the Discord guild
  * Admins are users who have the Administrator permission flag
  */

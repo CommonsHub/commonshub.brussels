@@ -167,8 +167,10 @@
       }
     },
     "categories": {
-      "credit": ["rental", "membership", "coworking", "catering", "services", "other"],
-      "debit": ["taxes", "catering", "services", "rent", "maintenance", "cleaning", "software", "hardware", "drinks", "salary", "consulting", "accounting", "groceries", "fees", "other"]
+      "credit": ["donation", "rental", "service", "membership", "coworking", "other"],
+      "debit": ["catering", "rent", "insurance", "tax", "fees", "consulting", "consumable", "utilities", "equipment", "furniture", "other"],
+      "mint": ["shift", "parkcleaning", "heartbeat", "other"],
+      "burn": ["booking", "coworking", "membership", "other"]
     }
   }
 }

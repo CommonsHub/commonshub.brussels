@@ -126,7 +126,10 @@ interface FinanceTransactionTableProps {
   tokenSymbol: string;
   tokenDecimals: number;
   chain: string;
+  /** Discord admin — drives batch selection + multi-edit footer. */
   isAdmin: boolean;
+  /** Logged-in with the Discord member role — drives inline edit affordances. */
+  canEdit?: boolean;
   showAccountColumn?: boolean;
   showExportButton?: boolean;
   useNormalizedAmount?: boolean;
@@ -283,11 +286,14 @@ export function FinanceTransactionTable({
   tokenDecimals,
   chain,
   isAdmin,
+  canEdit = false,
   showAccountColumn = false,
   showExportButton = false,
   useNormalizedAmount = false,
   viewScope = "year",
 }: FinanceTransactionTableProps) {
+  // Admins are members too for editing purposes; either grants inline edits.
+  const canEditRows = canEdit || isAdmin;
   const searchParams = useSearchParams();
   const router = useRouter();
   const { publish, watch, getAnnotation } = useNostr();
@@ -450,6 +456,29 @@ export function FinanceTransactionTable({
   const collectives = Object.keys(collectivesObj);
   const categoriesObj = (settings.finance as any).categories || {};
 
+  // Categories applicable to a given row, picked off chb's rawType.
+  // - CREDIT / DEBIT → settings.finance.categories.credit / .debit
+  // - MINT / BURN   → .mint / .burn
+  // - TRANSFER      → falls back to .burn (peer-to-peer token spend)
+  // - INTERNAL      → no categories (between our own accounts)
+  function categoriesForTx(tx: EnrichedTransaction): string[] {
+    switch (tx.rawType) {
+      case "MINT":
+        return categoriesObj.mint || [];
+      case "BURN":
+        return categoriesObj.burn || [];
+      case "TRANSFER":
+        return categoriesObj.burn || [];
+      case "INTERNAL":
+        return [];
+      case "DEBIT":
+        return categoriesObj.debit || [];
+      case "CREDIT":
+      default:
+        return categoriesObj.credit || [];
+    }
+  }
+
   // Extract unique values for filter dropdowns
   // Best human-readable label for a row's counterparty: the annotated
   // name from generated/counterparties.json, or null when there's no
@@ -471,11 +500,9 @@ export function FinanceTransactionTable({
 
   const uniqueCategories = useMemo(() => {
     const categories = new Set<string>();
-    const allCategories = [
-      ...(categoriesObj.credit || []),
-      ...(categoriesObj.debit || []),
-    ];
-    allCategories.forEach((cat) => categories.add(cat));
+    for (const key of ["credit", "debit", "mint", "burn"] as const) {
+      for (const cat of categoriesObj[key] || []) categories.add(cat);
+    }
     return Array.from(categories).sort();
   }, [categoriesObj]);
 
@@ -1003,16 +1030,12 @@ export function FinanceTransactionTable({
             {showAccountColumn && (
               <th className="text-left py-2 px-4 font-medium">Account</th>
             )}
+            <th className="text-left py-2 px-4 font-medium">Collective</th>
+            <th className="text-left py-2 px-4 font-medium">Category</th>
             <th className="text-left py-2 px-4 font-medium">Type</th>
-            <th className="text-left py-2 px-4 font-medium">Amount</th>
-            {isAdmin && (
-              <>
-                <th className="text-left py-2 px-4 font-medium">Collective</th>
-                <th className="text-left py-2 px-4 font-medium">Category</th>
-              </>
-            )}
             <th className="text-left py-2 px-4 font-medium">Counterpart</th>
-            <th className="text-left py-2 px-4 font-medium">Details</th>
+            <th className="text-left py-2 px-4 font-medium">Amount</th>
+            <th className="text-left py-2 px-4 font-medium">Description</th>
           </tr>
           {/* Filter row */}
           <tr className="bg-muted/10 border-b">
@@ -1080,6 +1103,47 @@ export function FinanceTransactionTable({
               </th>
             )}
             <th className="py-2 px-4">
+              <Select
+                value={collectiveFilter}
+                onValueChange={setCollectiveFilter}
+              >
+                <SelectTrigger className="h-7 text-xs w-full">
+                  <SelectValue placeholder="All collectives" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    All collectives ({totals.count})
+                  </SelectItem>
+                  {collectives.map((slug) => (
+                    <SelectItem key={slug} value={slug} className="text-xs">
+                      {collectivesObj[slug]?.name || slug} (
+                      {filterCounts.collectives.get(slug) || 0})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </th>
+            <th className="py-2 px-4">
+              <Select
+                value={categoryFilter}
+                onValueChange={setCategoryFilter}
+              >
+                <SelectTrigger className="h-7 text-xs w-full">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    All categories ({totals.count})
+                  </SelectItem>
+                  {uniqueCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat} className="text-xs">
+                      {cat} ({filterCounts.categories.get(cat) || 0})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </th>
+            <th className="py-2 px-4">
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="h-7 text-xs w-full">
                   <SelectValue placeholder="All types" />
@@ -1118,69 +1182,6 @@ export function FinanceTransactionTable({
               </Select>
             </th>
             <th className="py-2 px-4">
-              <div className="flex gap-1">
-                <Input
-                  type="number"
-                  placeholder="Min"
-                  value={minAmount}
-                  onChange={(e) => setMinAmount(e.target.value)}
-                  className="h-7 text-xs w-16"
-                />
-                <Input
-                  type="number"
-                  placeholder="Max"
-                  value={maxAmount}
-                  onChange={(e) => setMaxAmount(e.target.value)}
-                  className="h-7 text-xs w-16"
-                />
-              </div>
-            </th>
-            {isAdmin && (
-              <>
-                <th className="py-2 px-4">
-                  <Select
-                    value={collectiveFilter}
-                    onValueChange={setCollectiveFilter}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-full">
-                      <SelectValue placeholder="All collectives" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="text-xs">
-                        All collectives ({totals.count})
-                      </SelectItem>
-                      {collectives.map((slug) => (
-                        <SelectItem key={slug} value={slug} className="text-xs">
-                          {collectivesObj[slug]?.name || slug} (
-                          {filterCounts.collectives.get(slug) || 0})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </th>
-                <th className="py-2 px-4">
-                  <Select
-                    value={categoryFilter}
-                    onValueChange={setCategoryFilter}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-full">
-                      <SelectValue placeholder="All categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="text-xs">
-                        All categories ({totals.count})
-                      </SelectItem>
-                      {uniqueCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat} className="text-xs">
-                          {cat} ({filterCounts.categories.get(cat) || 0})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </th>
-              </>
-            )}
-            <th className="py-2 px-4" colSpan={2}>
               <Select
                 value={counterpartFilter}
                 onValueChange={setCounterpartFilter}
@@ -1199,6 +1200,24 @@ export function FinanceTransactionTable({
                   ))}
                 </SelectContent>
               </Select>
+            </th>
+            <th className="py-2 px-4" colSpan={2}>
+              <div className="flex gap-1">
+                <Input
+                  type="number"
+                  placeholder="Min"
+                  value={minAmount}
+                  onChange={(e) => setMinAmount(e.target.value)}
+                  className="h-7 text-xs w-16"
+                />
+                <Input
+                  type="number"
+                  placeholder="Max"
+                  value={maxAmount}
+                  onChange={(e) => setMaxAmount(e.target.value)}
+                  className="h-7 text-xs w-16"
+                />
+              </div>
             </th>
           </tr>
         </thead>
@@ -1224,9 +1243,7 @@ export function FinanceTransactionTable({
               minute: "2-digit",
             });
 
-            const categories = isIncoming
-              ? categoriesObj.credit || ["other"]
-              : categoriesObj.debit || ["other"];
+            const categories = categoriesForTx(tx);
 
             const txMeta = effectiveTxMetadata(tx);
             const cpMeta = effectiveCpMetadata(tx);
@@ -1303,6 +1320,84 @@ export function FinanceTransactionTable({
                     </Badge>
                   </td>
                 )}
+                <td
+                  className="py-2.5 px-4"
+                  onClick={(e) => canEditRows && e.stopPropagation()}
+                >
+                  {canEditRows ? (
+                    <Select
+                      value={txMeta.collective || "commonshub"}
+                      disabled={!tx.transactionUri}
+                      onValueChange={(value) => {
+                        if (tx.transactionUri) {
+                          publish(tx.transactionUri, {
+                            tags: { collective: value },
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[140px] h-8 text-xs select-trigger">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {collectives.map((slug) => (
+                          <SelectItem
+                            key={slug}
+                            value={slug}
+                            className="text-xs"
+                          >
+                            {collectivesObj[slug]?.name || slug}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">
+                      {collectivesObj[txMeta.collective || "commonshub"]?.name ||
+                        txMeta.collective ||
+                        "commonshub"}
+                    </Badge>
+                  )}
+                </td>
+                <td
+                  className="py-2.5 px-4"
+                  onClick={(e) => canEditRows && e.stopPropagation()}
+                >
+                  {canEditRows && categories.length > 0 ? (
+                    <Select
+                      value={txMeta.category || "other"}
+                      disabled={!tx.transactionUri}
+                      onValueChange={(value) => {
+                        if (tx.transactionUri) {
+                          publish(tx.transactionUri, {
+                            tags: { category: value },
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[120px] h-8 text-xs select-trigger">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat: string) => (
+                          <SelectItem
+                            key={cat}
+                            value={cat}
+                            className="text-xs"
+                          >
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : txMeta.category ? (
+                    <Badge variant="outline" className="text-xs">
+                      {txMeta.category}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </td>
                 <td className="py-2.5 px-4">
                   <Badge
                     variant={isIncoming ? "default" : "secondary"}
@@ -1311,110 +1406,6 @@ export function FinanceTransactionTable({
                     {typeLabel(tx.rawType, isIncoming)}
                   </Badge>
                 </td>
-                <td className="py-2.5 px-4">
-                  {(() => {
-                    const hasGross = typeof tx.grossAmount === "number";
-                    const hasNet = typeof tx.netAmount === "number";
-                    const grossVal = hasGross ? tx.grossAmount : undefined;
-                    const netVal = hasNet ? tx.netAmount : undefined;
-                    const showNet =
-                      hasGross && hasNet && tx.grossAmount !== tx.netAmount;
-
-                    const gross = formatRowAmount(
-                      tx,
-                      tokenSymbol,
-                      tokenDecimals,
-                      grossVal
-                    );
-                    const net = showNet
-                      ? formatRowAmount(tx, tokenSymbol, tokenDecimals, netVal)
-                      : null;
-
-                    return (
-                      <>
-                        <div
-                          className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
-                        >
-                          {isIncoming ? "+" : "-"}
-                          {gross.value}
-                        </div>
-                        {net ? (
-                          <div className="text-xs text-muted-foreground">
-                            net: {isIncoming ? "+" : "-"}
-                            {net.value}
-                            {net.suffix ? ` ${net.suffix}` : ""}
-                          </div>
-                        ) : gross.suffix ? (
-                          <div className="text-xs text-muted-foreground">
-                            {gross.suffix}
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                </td>
-                {isAdmin && (
-                  <>
-                    <td
-                      className="py-2.5 px-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Select
-                        value={txMeta.collective || "commonshub"}
-                        disabled={!tx.transactionUri}
-                        onValueChange={(value) => {
-                          if (tx.transactionUri) {
-                            publish(tx.transactionUri, { tags: { collective: value } });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-[140px] h-8 text-xs select-trigger">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {collectives.map((slug) => (
-                            <SelectItem
-                              key={slug}
-                              value={slug}
-                              className="text-xs"
-                            >
-                              {collectivesObj[slug]?.name || slug}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td
-                      className="py-2.5 px-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Select
-                        value={txMeta.category || "other"}
-                        disabled={!tx.transactionUri}
-                        onValueChange={(value) => {
-                          if (tx.transactionUri) {
-                            publish(tx.transactionUri, { tags: { category: value } });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-[120px] h-8 text-xs select-trigger">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map((cat: string) => (
-                            <SelectItem
-                              key={cat}
-                              value={cat}
-                              className="text-xs"
-                            >
-                              {cat}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                  </>
-                )}
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
                     {(() => {
@@ -1487,7 +1478,7 @@ export function FinanceTransactionTable({
                         <div className="text-xs text-muted-foreground">—</div>
                       );
                     })()}
-                    {isAdmin && tx.counterpartyId && (
+                    {canEditRows && tx.counterpartyId && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
                           value={counterpartyLabel(cpMeta)}
@@ -1503,19 +1494,64 @@ export function FinanceTransactionTable({
                   </div>
                 </td>
                 <td className="py-2.5 px-4">
-                  <div className="flex flex-col gap-1">
+                  {(() => {
+                    const hasGross = typeof tx.grossAmount === "number";
+                    const hasNet = typeof tx.netAmount === "number";
+                    const grossVal = hasGross ? tx.grossAmount : undefined;
+                    const netVal = hasNet ? tx.netAmount : undefined;
+                    const showNet =
+                      hasGross && hasNet && tx.grossAmount !== tx.netAmount;
 
-                    {isAdmin && tx.transactionUri && (
+                    const gross = formatRowAmount(
+                      tx,
+                      tokenSymbol,
+                      tokenDecimals,
+                      grossVal
+                    );
+                    const net = showNet
+                      ? formatRowAmount(tx, tokenSymbol, tokenDecimals, netVal)
+                      : null;
+
+                    return (
+                      <>
+                        <div
+                          className={`font-semibold text-base ${isIncoming ? "text-green-600" : "text-red-600"}`}
+                        >
+                          {isIncoming ? "+" : "-"}
+                          {gross.value}
+                        </div>
+                        {net ? (
+                          <div className="text-xs text-muted-foreground">
+                            net: {isIncoming ? "+" : "-"}
+                            {net.value}
+                            {net.suffix ? ` ${net.suffix}` : ""}
+                          </div>
+                        ) : gross.suffix ? (
+                          <div className="text-xs text-muted-foreground">
+                            {gross.suffix}
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </td>
+                <td className="py-2.5 px-4">
+                  <div className="flex flex-col gap-1">
+                    {canEditRows && tx.transactionUri ? (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
                           value={txMeta.description || ""}
                           onSave={async (value) => {
-                            await publish(tx.transactionUri!, { content: value });
+                            await publish(tx.transactionUri!, {
+                              content: value,
+                            });
                           }}
                           placeholder="add note"
                         />
                       </div>
-                    )}
+                    ) : txMeta.description ? (
+                      <div className="text-xs">{txMeta.description}</div>
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -1525,15 +1561,16 @@ export function FinanceTransactionTable({
         <tfoot className="bg-muted/20 border-t-2 border-gray-300 font-semibold">
           <tr>
             {isAdmin && <td className="py-3 px-4"></td>}
-            <td className="py-3 px-4" colSpan={showAccountColumn ? 2 : 1}>
+            <td
+              className="py-3 px-4"
+              colSpan={showAccountColumn ? 6 : 5}
+            >
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-sm">
                   {totals.count} transaction{totals.count !== 1 ? "s" : ""}
                 </span>
               </div>
             </td>
-            {showAccountColumn && <td className="py-3 px-4"></td>}
-            <td className="py-3 px-4"></td>
             <td className="py-3 px-4">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
@@ -1570,13 +1607,6 @@ export function FinanceTransactionTable({
                 </div>
               </div>
             </td>
-            {isAdmin && (
-              <>
-                <td className="py-3 px-4"></td>
-                <td className="py-3 px-4"></td>
-              </>
-            )}
-            <td className="py-3 px-4"></td>
             <td className="py-3 px-4"></td>
           </tr>
         </tfoot>
