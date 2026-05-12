@@ -19,6 +19,7 @@ export function ethereumAddressId(
   address: string | null | undefined
 ): string | null {
   if (!address) return null;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
   const chainId = chainIdFor(chain);
   if (!chainId) return null;
   return `ethereum:${chainId}:address:${address.toLowerCase()}`;

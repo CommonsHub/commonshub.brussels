@@ -1365,14 +1365,29 @@ export function FinanceTransactionTable({
                           </a>
                         );
                       })()
-                    ) : (
-                      <WalletAddress
-                        address={isIncoming ? tx.from : tx.to}
-                        chain={tx.chain || chain}
-                        showLink={true}
-                        showCopy={true}
-                      />
-                    )}
+                    ) : (() => {
+                      const addr = isIncoming ? tx.from : tx.to;
+                      const isHexAddress =
+                        typeof addr === "string" &&
+                        /^0x[a-fA-F0-9]{40}$/.test(addr);
+                      if (isHexAddress) {
+                        return (
+                          <WalletAddress
+                            address={addr}
+                            chain={tx.chain || chain}
+                            showLink={true}
+                            showCopy={true}
+                          />
+                        );
+                      }
+                      // Monerium IBAN transfers carry the bank sender/receiver
+                      // name (not an on-chain address) in tx.counterparty.
+                      return (
+                        <div className="font-medium" title={addr || undefined}>
+                          {addr || "—"}
+                        </div>
+                      );
+                    })()}
                     {isAdmin && tx.counterpartyId && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor
