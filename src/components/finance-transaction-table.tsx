@@ -1026,6 +1026,74 @@ export function FinanceTransactionTable({
     tokenSymbol,
   ]);
 
+  // Totals grouped by collective × currency (same currency-merge rules as
+  // `totals` above: EUR / EURe / EURb collapse to "EUR").
+  const totalsByCollective = useMemo(() => {
+    const canonical = (currency: string | undefined): string => {
+      if (!currency) return "?";
+      if (currency === "EUR" || currency === "EURe" || currency === "EURb")
+        return "EUR";
+      return currency;
+    };
+    const map = new Map<
+      string,
+      Map<string, { totalIn: number; totalOut: number; count: number }>
+    >();
+    filteredTransactions.forEach((tx) => {
+      const meta = effectiveTxMetadata(tx);
+      const collective = meta.collective || "commonshub";
+      const isIncoming = useNormalizedAmount
+        ? tx.type === "CREDIT"
+        : tx.to?.toLowerCase() === accountAddress?.toLowerCase();
+      const amount = Number(tx.amount ?? Number(tx.value) ?? 0);
+      const cur = canonical(tx.currency || tokenSymbol);
+      if (!map.has(collective)) map.set(collective, new Map());
+      const byCur = map.get(collective)!;
+      const entry = byCur.get(cur) ?? {
+        totalIn: 0,
+        totalOut: 0,
+        count: 0,
+      };
+      entry.count += 1;
+      if (isIncoming) entry.totalIn += amount;
+      else entry.totalOut += amount;
+      byCur.set(cur, entry);
+    });
+    return Array.from(map.entries())
+      .map(([collective, byCur]) => ({
+        collective,
+        perCurrency: Array.from(byCur.entries())
+          .map(([currency, v]) => ({
+            currency,
+            totalIn: v.totalIn,
+            totalOut: v.totalOut,
+            net: v.totalIn - v.totalOut,
+            count: v.count,
+          }))
+          .sort((a, b) => {
+            if (a.currency === "EUR") return -1;
+            if (b.currency === "EUR") return 1;
+            return a.currency.localeCompare(b.currency);
+          }),
+      }))
+      .sort((a, b) => {
+        // Push "commonshub" first; the rest alphabetical.
+        if (a.collective === "commonshub") return -1;
+        if (b.collective === "commonshub") return 1;
+        return a.collective.localeCompare(b.collective);
+      });
+    // effectiveTxMetadata depends on the nostr annotation context, which
+    // is fetched via the hook closure — re-running on filteredTransactions
+    // changes is good enough since annotation updates trigger re-renders
+    // through React state anyway.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filteredTransactions,
+    useNormalizedAmount,
+    accountAddress,
+    tokenSymbol,
+  ]);
+
   const toggleTransaction = (txId: string) => {
     const newSelected = new Set(selectedTransactions);
     if (newSelected.has(txId)) {
@@ -1184,6 +1252,20 @@ export function FinanceTransactionTable({
     document.body.removeChild(link);
   };
 
+  // Format a signed currency amount, e.g. "+€42.00" or "-3.5 CHT".
+  const formatSummaryAmount = (
+    sign: "+" | "-",
+    n: number,
+    currency: string
+  ): string => {
+    const isEur = currency === "EUR";
+    const display = n.toLocaleString("en-US", {
+      minimumFractionDigits: isEur ? 2 : 0,
+      maximumFractionDigits: isEur ? 2 : 6,
+    });
+    return isEur ? `${sign}€${display}` : `${sign}${display} ${currency}`;
+  };
+
   return (
     <div>
       {showExportButton && (
@@ -1191,6 +1273,56 @@ export function FinanceTransactionTable({
           <Button onClick={exportToCSV} variant="outline" size="sm">
             Export to CSV
           </Button>
+        </div>
+      )}
+      {totalsByCollective.length > 0 && (
+        <div className="mb-6 rounded-md border bg-muted/20 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/30">
+              <tr className="text-xs text-muted-foreground">
+                <th className="text-left py-2 px-4 font-medium">Collective</th>
+                <th className="text-right py-2 px-4 font-medium">Income</th>
+                <th className="text-right py-2 px-4 font-medium">Expenses</th>
+                <th className="text-right py-2 px-4 font-medium">Net</th>
+                <th className="text-right py-2 px-4 font-medium">Txs</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {totalsByCollective.flatMap((c) =>
+                c.perCurrency.map((row, i) => {
+                  const name =
+                    collectivesObj[c.collective]?.name || c.collective;
+                  return (
+                    <tr key={`${c.collective}:${row.currency}`}>
+                      <td className="py-2 px-4 font-medium">
+                        {i === 0 ? name : ""}
+                      </td>
+                      <td className="py-2 px-4 text-right whitespace-nowrap text-green-600">
+                        {formatSummaryAmount("+", row.totalIn, row.currency)}
+                      </td>
+                      <td className="py-2 px-4 text-right whitespace-nowrap text-red-600">
+                        {formatSummaryAmount("-", row.totalOut, row.currency)}
+                      </td>
+                      <td
+                        className={`py-2 px-4 text-right whitespace-nowrap font-semibold ${
+                          row.net >= 0 ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {formatSummaryAmount(
+                          row.net >= 0 ? "+" : "-",
+                          Math.abs(row.net),
+                          row.currency
+                        )}
+                      </td>
+                      <td className="py-2 px-4 text-right text-muted-foreground">
+                        {row.count}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       )}
       <div className="overflow-x-auto">
