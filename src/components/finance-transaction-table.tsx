@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -279,6 +279,117 @@ function formatAmount(
   return formattedNumber;
 }
 
+/**
+ * Reveal panel shown below a row when a member clicks on it.
+ * Surfaces the raw chb tags + metadata + identifiers from
+ * generated/transactions.json — useful for spot-checking what the
+ * pipeline actually wrote for a given row.
+ */
+function ExpandedRowDetails({ tx }: { tx: EnrichedTransaction }) {
+  const rows = tx as unknown as Record<string, unknown>;
+  const rawTags = Array.isArray(rows.tags) ? (rows.tags as unknown[][]) : [];
+  const metadata = (rows.metadata as Record<string, unknown> | undefined) ?? {};
+
+  const idFields: Array<[string, string | null | undefined]> = [
+    ["id", tx.transactionId],
+    ["accountId", (rows.accountId as string | undefined) ?? null],
+    ["counterpartyId", tx.counterpartyId ?? null],
+    ["providerId", (rows.providerId as string | undefined) ?? null],
+  ];
+  const numericFields: Array<[string, unknown]> = [
+    ["amount", tx.amount],
+    ["grossAmount", tx.grossAmount],
+    ["netAmount", tx.netAmount],
+    ["fee", rows.fee],
+    ["normalizedAmount", tx.normalizedAmount],
+    ["currency", tx.currency],
+    ["chain", tx.chain],
+    ["provider", tx.provider],
+    ["type", tx.rawType ?? tx.type],
+    ["value", (rows.value as string | undefined) ?? null],
+  ];
+
+  return (
+    <div className="grid gap-4 text-xs md:grid-cols-3">
+      <section>
+        <h4 className="font-semibold text-foreground mb-2">Identifiers</h4>
+        <dl className="space-y-1 font-mono">
+          {idFields.map(([k, v]) => (
+            <div
+              key={k}
+              className="grid grid-cols-[7rem_1fr] gap-2 break-all"
+            >
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd>{v ?? <span className="text-muted-foreground">—</span>}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      <section>
+        <h4 className="font-semibold text-foreground mb-2">Fields</h4>
+        <dl className="space-y-1 font-mono">
+          {numericFields.map(([k, v]) => (
+            <div
+              key={k}
+              className="grid grid-cols-[7rem_1fr] gap-2 break-all"
+            >
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd>
+                {v === null || v === undefined || v === "" ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  String(v)
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      <section className="md:col-span-1 col-span-full space-y-4">
+        <div>
+          <h4 className="font-semibold text-foreground mb-2">
+            Tags ({rawTags.length})
+          </h4>
+          {rawTags.length === 0 ? (
+            <p className="text-muted-foreground">no tags</p>
+          ) : (
+            <ul className="space-y-1 font-mono">
+              {rawTags.map((t, i) => (
+                <li key={i} className="break-all">
+                  <span className="text-muted-foreground">{String(t[0])}</span>
+                  {t.length > 1 && (
+                    <> = {t.slice(1).map((x) => String(x)).join(" ")}</>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <h4 className="font-semibold text-foreground mb-2">
+            Metadata ({Object.keys(metadata).length})
+          </h4>
+          {Object.keys(metadata).length === 0 ? (
+            <p className="text-muted-foreground">no metadata</p>
+          ) : (
+            <dl className="space-y-1 font-mono">
+              {Object.entries(metadata).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid grid-cols-[8rem_1fr] gap-2 break-all"
+                >
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd>{String(v ?? "")}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function formatNormalizedAmount(
   amountInCents: number,
   tokenSymbol: string
@@ -368,6 +479,14 @@ export function FinanceTransactionTable({
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(
     new Set()
   );
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleExpanded = (txId: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(txId)) next.delete(txId);
+      else next.add(txId);
+      return next;
+    });
   const [batchCollective, setBatchCollective] = useState("");
   const [batchCategory, setBatchCategory] = useState("");
   const [batchNote, setBatchNote] = useState("");
@@ -1305,9 +1424,11 @@ export function FinanceTransactionTable({
             const txMeta = effectiveTxMetadata(tx);
             const cpMeta = effectiveCpMetadata(tx);
 
+            const isExpanded = expandedRows.has(tx.transactionId);
+
             return (
+              <Fragment key={`${tx.hash}-${index}`}>
               <tr
-                key={`${tx.hash}-${index}`}
                 className={`hover:bg-muted/20 transition-colors text-sm ${
                   selectedTransactions.has(tx.transactionId)
                     ? "bg-muted/30"
@@ -1327,11 +1448,11 @@ export function FinanceTransactionTable({
                   ) {
                     return;
                   }
-                  if (isAdmin) {
-                    toggleTransaction(tx.transactionId);
+                  if (canEditRows) {
+                    toggleExpanded(tx.transactionId);
                   }
                 }}
-                style={{ cursor: isAdmin ? "pointer" : "default" }}
+                style={{ cursor: canEditRows ? "pointer" : "default" }}
               >
                 {isAdmin && (
                   <td className="py-2.5 px-4">
@@ -1620,6 +1741,19 @@ export function FinanceTransactionTable({
                   </td>
                 )}
               </tr>
+              {isExpanded && (
+                <tr className="bg-muted/20 border-b">
+                  <td
+                    colSpan={
+                      7 + (isAdmin ? 1 : 0) + (showAccountColumn ? 1 : 0)
+                    }
+                    className="py-4 px-6"
+                  >
+                    <ExpandedRowDetails tx={tx} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
         </tbody>
