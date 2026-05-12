@@ -415,22 +415,33 @@ export function FinanceTransactionTable({
   const categoriesObj = (settings.finance as any).categories || {};
 
   // Extract unique values for filter dropdowns
+  // Best human-readable label for a row's counterparty: prefer the
+  // annotated name from generated/counterparties.json, then fall back to
+  // the raw counterparty value when it isn't an opaque 0x address.
+  // Returns null when there's no useful label to show in a filter list.
+  function counterpartLabelForTx(tx: EnrichedTransaction): string | null {
+    const annotated = counterpartyLabel(tx.counterpartyMetadata);
+    if (annotated) return annotated;
+    const raw = tx.counterparty;
+    if (
+      raw &&
+      !/^0x[a-fA-F0-9]{40}$/.test(raw) &&
+      raw !== "0x0000000000000000000000000000000000000000"
+    ) {
+      return raw;
+    }
+    return null;
+  }
+
   const uniqueCounterparts = useMemo(() => {
     const counterparts = new Set<string>();
     transactions.forEach((tx) => {
-      // Only surface human-readable counterpart labels (e.g. IBAN sender
-      // names from Monerium). Skip raw 0x addresses — there are too many
-      // to be useful in a dropdown.
-      const name = tx.counterparty;
-      if (
-        name &&
-        !/^0x[a-fA-F0-9]{40}$/.test(name) &&
-        name !== "0x0000000000000000000000000000000000000000"
-      ) {
-        counterparts.add(name);
-      }
+      const label = counterpartLabelForTx(tx);
+      if (label) counterparts.add(label);
     });
-    return Array.from(counterparts).sort();
+    return Array.from(counterparts).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
   }, [transactions]);
 
   const uniqueCategories = useMemo(() => {
@@ -520,7 +531,7 @@ export function FinanceTransactionTable({
         year: "numeric",
         month: "short",
       });
-      const txCounterpart = tx.counterparty;
+      const txCounterpart = counterpartLabelForTx(tx);
       const txCollective = tx.transactionMetadata?.collective || "commonshub";
       const txCategory = tx.transactionMetadata?.category || "other";
       const txAccount = tx.accountName;
@@ -649,7 +660,7 @@ export function FinanceTransactionTable({
 
       // Filter by counterpart
       if (counterpartFilter !== "all") {
-        const txCounterpart = tx.counterparty;
+        const txCounterpart = counterpartLabelForTx(tx);
         if (txCounterpart !== counterpartFilter) return false;
       }
 
