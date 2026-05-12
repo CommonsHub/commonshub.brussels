@@ -9,9 +9,18 @@ const CHAIN_IDS: Record<string, number> = {
   celo: 42220,
 };
 
+const CHAIN_BY_ID: Record<number, string> = Object.fromEntries(
+  Object.entries(CHAIN_IDS).map(([name, id]) => [id, name])
+);
+
 export function chainIdFor(chain: string | null | undefined): number | null {
   if (!chain) return null;
   return CHAIN_IDS[chain.toLowerCase()] ?? null;
+}
+
+export function chainNameFor(chainId: number | string): string | null {
+  const id = typeof chainId === "string" ? parseInt(chainId, 10) : chainId;
+  return CHAIN_BY_ID[id] ?? null;
 }
 
 export function ethereumAddressId(
@@ -35,16 +44,6 @@ export function ethereumTxId(
   return `ethereum:${chainId}:tx:${txHash.toLowerCase()}`;
 }
 
-export function stripeCustomerId(value: string | null | undefined): string | null {
-  if (!value) return null;
-  return value.startsWith("cus_") ? `stripe:customer:${value}` : null;
-}
-
-export function stripeTxId(value: string | null | undefined): string | null {
-  if (!value) return null;
-  return `stripe:txn:${value}`;
-}
-
 /** NIP-73 `k` tag value (the "kind" of the external identifier). */
 export function nip73Kind(uri: string): string {
   const parts = uri.split(":");
@@ -59,32 +58,41 @@ export function nip73Kind(uri: string): string {
   return parts[0] ?? "";
 }
 
-/** NIP-73 URI for a transaction (returns null when we can't form one). */
-export function transactionNip73Id(tx: {
-  provider?: string | null;
-  chain?: string | null;
-  txHash?: string | null;
-  stripeChargeId?: string | null;
-  id?: string | null;
-}): string | null {
-  if (tx.provider === "stripe") {
-    return stripeTxId(tx.stripeChargeId ?? tx.txHash ?? tx.id);
-  }
-  return ethereumTxId(tx.chain, tx.txHash);
+/**
+ * Extract the 0x address from an `ethereum:<chainId>:address:<addr>` URI
+ * (also accepts `ethereum:<chainId>:token:<addr>` for token-contract refs).
+ * Returns null for non-ethereum URIs or malformed input.
+ */
+export function addressFromUri(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  const parts = uri.split(":");
+  if (parts[0] !== "ethereum") return null;
+  if (parts[2] !== "address" && parts[2] !== "token") return null;
+  const addr = parts[3];
+  if (!addr || !/^0x[a-fA-F0-9]{40}$/.test(addr)) return null;
+  return addr.toLowerCase();
 }
 
 /**
- * Build a NIP-73 counterparty ID from a transaction's provider/chain/counterparty
- * triple. Returns null when no scheme matches (e.g. Stripe txs whose
- * counterparty is a free-text description rather than a customer ID).
+ * Extract the tx hash from an `ethereum:<chainId>:tx:<hash>` URI.
  */
-export function counterpartyNip73Id(tx: {
-  provider?: string | null;
-  chain?: string | null;
-  counterparty?: string | null;
-}): string | null {
-  if (tx.provider === "stripe") {
-    return stripeCustomerId(tx.counterparty);
-  }
-  return ethereumAddressId(tx.chain, tx.counterparty);
+export function txHashFromUri(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  const parts = uri.split(":");
+  if (parts[0] !== "ethereum" || parts[2] !== "tx") return null;
+  const hash = parts[3];
+  if (!hash || !/^0x[a-fA-F0-9]{1,}$/.test(hash)) return null;
+  return hash.toLowerCase();
+}
+
+/**
+ * Extract the chain name from an ethereum NIP-73 URI.
+ */
+export function chainFromUri(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  const parts = uri.split(":");
+  if (parts[0] !== "ethereum") return null;
+  const chainId = parseInt(parts[1] ?? "", 10);
+  if (!chainId) return null;
+  return chainNameFor(chainId);
 }

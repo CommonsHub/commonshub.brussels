@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { InlineDescriptionEditor } from "@/components/inline-description-editor";
 import { WalletAddress } from "@/components/wallet-address";
-import type { TokenTransfer } from "@/lib/etherscan";
+import { addressFromUri } from "@/lib/nip73";
 import settings from "@/settings/settings.json";
 import {
   counterpartyLabel,
@@ -32,16 +32,18 @@ interface TransactionMetadata {
   description: string;
 }
 
-interface EnrichedTransaction extends TokenTransfer {
+interface EnrichedTransaction {
+  // Core display fields (TokenTransfer-shaped legacy contract).
+  hash?: string;
+  timeStamp: string;
+  from?: string;
+  to?: string;
+  value: string;
   transactionId: string;
   transactionUri?: string;
   transactionMetadata?: TransactionMetadata;
-  counterpartyId?: string;
+  counterpartyId?: string | null;
   counterpartyMetadata?: CounterpartyMetadata;
-  // Raw counterparty value from chb generated/transactions.json — either a
-  // 0x address for on-chain rows or a free-text name for Monerium IBAN /
-  // Stripe charge descriptions.
-  counterparty?: string;
   accountName?: string;
   accountSlug?: string;
   normalizedAmount?: number;
@@ -67,12 +69,8 @@ function txExplorerUrl(
   fallbackChain: string
 ): string | null {
   if (tx.provider === "stripe") {
-    if (tx.counterpartyId?.startsWith("stripe:customer:")) {
-      const cusId = tx.counterpartyId.slice("stripe:customer:".length);
-      return `https://dashboard.stripe.com/customers/${cusId}`;
-    }
     if (tx.stripeChargeId) {
-      return `https://dashboard.stripe.com/payments/${tx.stripeChargeId}`;
+      return `https://dashboard.stripe.com/balance/transactions/${tx.stripeChargeId}`;
     }
     return null;
   }
@@ -415,22 +413,11 @@ export function FinanceTransactionTable({
   const categoriesObj = (settings.finance as any).categories || {};
 
   // Extract unique values for filter dropdowns
-  // Best human-readable label for a row's counterparty: prefer the
-  // annotated name from generated/counterparties.json, then fall back to
-  // the raw counterparty value when it isn't an opaque 0x address.
-  // Returns null when there's no useful label to show in a filter list.
+  // Best human-readable label for a row's counterparty: the annotated
+  // name from generated/counterparties.json, or null when there's no
+  // entry for this counterparty.
   function counterpartLabelForTx(tx: EnrichedTransaction): string | null {
-    const annotated = counterpartyLabel(tx.counterpartyMetadata);
-    if (annotated) return annotated;
-    const raw = tx.counterparty;
-    if (
-      raw &&
-      !/^0x[a-fA-F0-9]{40}$/.test(raw) &&
-      raw !== "0x0000000000000000000000000000000000000000"
-    ) {
-      return raw;
-    }
-    return null;
+    return counterpartyLabel(tx.counterpartyMetadata) || null;
   }
 
   const uniqueCounterparts = useMemo(() => {
@@ -876,10 +863,10 @@ export function FinanceTransactionTable({
         const description = txMeta.description || cpLabel;
         const counterparty = cpLabel || (isIncoming ? tx.from : tx.to);
 
-        row.push(collective, category, description, counterparty);
+        row.push(collective, category, description, counterparty ?? "");
       }
 
-      row.push(tx.hash);
+      row.push(tx.hash ?? "");
 
       return row;
     });
@@ -1343,48 +1330,24 @@ export function FinanceTransactionTable({
                 )}
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
-                    {tx.provider === "stripe" ? (
-                      (() => {
-                        const cusId = tx.counterpartyId?.startsWith(
-                          "stripe:customer:"
-                        )
-                          ? tx.counterpartyId.slice(
-                              "stripe:customer:".length
-                            )
-                          : null;
-                        if (!cusId) {
-                          // Stripe rows without a linked customer have no real
-                          // counterpart — tx.counterparty here is the charge
-                          // description, which belongs in the Details column.
-                          return (
-                            <div className="text-xs text-muted-foreground">
-                              —
-                            </div>
-                          );
-                        }
-                        const label = counterpartyLabel(cpMeta) || cusId;
-                        return (
-                          <a
-                            href={`https://dashboard.stripe.com/customers/${cusId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium hover:underline"
-                          >
-                            {label}
-                          </a>
+                    {(() => {
+                      // Stripe rows have no on-chain explorer link and (in
+                      // the current chb schema) no counterpartyId; just show
+                      // the annotated name or an em dash.
+                      if (tx.provider === "stripe") {
+                        const label = counterpartyLabel(cpMeta);
+                        return label ? (
+                          <div className="font-medium">{label}</div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            —
+                          </div>
                         );
-                      })()
-                    ) : (() => {
-                      // For blockchain rows, the counterpart label may be
-                      // either a 0x address (real on-chain counterparty) or
-                      // a free-text name from Monerium IBAN transfers.
-                      // Prefer the manually-annotated counterparty name from
-                      // generated/counterparties.json when available.
+                      }
+
+                      // Blockchain row.
                       const cpName = counterpartyLabel(cpMeta);
-                      const raw = tx.counterparty;
-                      const isHexAddress =
-                        typeof raw === "string" &&
-                        /^0x[a-fA-F0-9]{40}$/.test(raw);
+                      const cpAddr = addressFromUri(tx.counterpartyId);
                       const txExplorer = txExplorerUrl(tx, chain);
                       const explorerIcon = txExplorer ? (
                         <a
@@ -1403,10 +1366,10 @@ export function FinanceTransactionTable({
                         body = (
                           <div className="font-medium">{cpName}</div>
                         );
-                      } else if (isHexAddress) {
+                      } else if (cpAddr) {
                         body = (
                           <WalletAddress
-                            address={raw!}
+                            address={cpAddr}
                             chain={tx.chain || chain}
                             showLink={true}
                             showCopy={true}
@@ -1414,11 +1377,8 @@ export function FinanceTransactionTable({
                         );
                       } else {
                         body = (
-                          <div
-                            className="font-medium"
-                            title={raw || undefined}
-                          >
-                            {raw || "—"}
+                          <div className="text-xs text-muted-foreground">
+                            —
                           </div>
                         );
                       }
@@ -1446,15 +1406,7 @@ export function FinanceTransactionTable({
                 </td>
                 <td className="py-2.5 px-4">
                   <div className="flex flex-col gap-1">
-                    {!txMeta.description &&
-                      tx.provider === "stripe" &&
-                      tx.counterparty && (
-                        <div className="text-xs text-muted-foreground italic">
-                          {tx.counterparty.length > 60
-                            ? tx.counterparty.slice(0, 60) + "…"
-                            : tx.counterparty}
-                        </div>
-                      )}
+
                     {isAdmin && tx.transactionUri && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <InlineDescriptionEditor

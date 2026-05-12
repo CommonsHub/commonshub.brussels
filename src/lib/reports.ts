@@ -10,6 +10,16 @@ import type { CachedMessage } from "./discord-cache";
 import { getLocalImagePath } from "./discord-cache";
 import { getProxiedImageUrl } from "./image-proxy";
 import { DATA_DIR } from "./data-paths";
+import type { Transaction as ConsolidatedTx } from "@/types/transactions";
+import {
+  readMonthlyTransactions,
+  tagValue,
+  txDirection,
+  isInternalTransfer,
+} from "./transactions";
+import { addressFromUri } from "./nip73";
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ========== Type Definitions ==========
 
@@ -650,105 +660,22 @@ export function filterVisiblePhotos(
 
 // ========== Financial Data Functions ==========
 
-/**
- * Get tracked account addresses (for detecting internal transfers)
- */
-function getTrackedAddresses(): Set<string> {
-  const addresses = new Set<string>();
-
-  for (const account of settings.finance.accounts) {
-    if (account.address) {
-      addresses.add(account.address.toLowerCase());
-    }
-  }
-
-  return addresses;
-}
-
-/**
- * Consolidated transaction shape written by chb's pipeline to
- * data/{year}/{month}/generated/transactions.json
- */
-interface ConsolidatedTx {
-  id: string;
-  txHash?: string;
-  provider: "etherscan" | "stripe";
-  chain: string | null;
-  account: string;
-  accountSlug: string;
-  accountName: string;
-  currency: string;
-  value: string;
-  amount: number;
-  netAmount: number;
-  grossAmount: number;
-  normalizedAmount: number;
-  fee: number;
-  type: "CREDIT" | "DEBIT";
-  counterparty: string;
-  timestamp: number;
-  tags?: string[][];
-  metadata?: Record<string, unknown>;
-}
-
-function tagValue(tx: ConsolidatedTx, key: string): string | undefined {
-  for (const t of tx.tags ?? []) {
-    if (t[0] === key && typeof t[1] === "string") return t[1];
-  }
-  return undefined;
-}
-
 function txFromAddress(tx: ConsolidatedTx): string | undefined {
-  return (tagValue(tx, "from") ??
-    (tx.type === "CREDIT" ? tx.counterparty : tx.account) ??
-    undefined)?.toLowerCase();
+  const tagged = tagValue(tx, "from");
+  if (tagged) return tagged.toLowerCase();
+  const dir = txDirection(tx);
+  const accountAddr = addressFromUri(tx.accountId);
+  const cpAddr = addressFromUri(tx.counterpartyId);
+  return (dir === "CREDIT" ? cpAddr : accountAddr) ?? undefined;
 }
 
 function txToAddress(tx: ConsolidatedTx): string | undefined {
-  return (tagValue(tx, "to") ??
-    (tx.type === "CREDIT" ? tx.account : tx.counterparty) ??
-    undefined)?.toLowerCase();
-}
-
-/** Both from and to are accounts we control → internal transfer. */
-function isInternalTransfer(
-  tx: ConsolidatedTx,
-  trackedAddresses: Set<string>
-): boolean {
-  if (tx.provider !== "etherscan") return false;
-  const fromAddr = txFromAddress(tx);
-  const toAddr = txToAddress(tx);
-  if (!fromAddr || !toAddr) return false;
-  return trackedAddresses.has(fromAddr) && trackedAddresses.has(toAddr);
-}
-
-/**
- * Read the per-month consolidated transactions file produced by chb.
- */
-function readMonthlyTransactions(
-  year: string,
-  month: string
-): ConsolidatedTx[] {
-  const filePath = path.join(
-    DATA_DIR,
-    year,
-    month,
-    "generated",
-    "transactions.json"
-  );
-  if (!fs.existsSync(filePath)) return [];
-  try {
-    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
-      transactions?: ConsolidatedTx[];
-    };
-    return data.transactions ?? [];
-  } catch (error) {
-    console.error(
-      `Error reading consolidated transactions for ${year}-${month}:`,
-      error
-    );
-    return [];
-  }
+  const tagged = tagValue(tx, "to");
+  if (tagged) return tagged.toLowerCase();
+  const dir = txDirection(tx);
+  const accountAddr = addressFromUri(tx.accountId);
+  const cpAddr = addressFromUri(tx.counterpartyId);
+  return (dir === "CREDIT" ? accountAddr : cpAddr) ?? undefined;
 }
 
 /**
@@ -756,8 +683,6 @@ function readMonthlyTransactions(
  * Filters out outlier transactions (3+ orders of magnitude different) if they sum to zero
  */
 function calculateTokenActivity(chtTransactions: ConsolidatedTx[]): TokenData {
-  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
   // First pass: calculate all values and find median for outlier detection
   const allValues: number[] = [];
   const transactionData: Array<{
@@ -873,7 +798,6 @@ export function calculateMonthlyFinancials(
   month: string
 ): FinancialData {
   const transactions = readMonthlyTransactions(year, month);
-  const trackedAddresses = getTrackedAddresses();
   const byAccount: Map<
     string,
     {
@@ -905,8 +829,10 @@ export function calculateMonthlyFinancials(
     );
     if (!account) continue;
 
-    // Skip internal transfers between accounts we control.
-    if (isInternalTransfer(tx, trackedAddresses)) continue;
+    // Skip internal transfers and peer-to-peer token transfers — neither
+    // moves money into or out of the org.
+    if (isInternalTransfer(tx)) continue;
+    if (tx.type === "TRANSFER") continue;
 
     const existing = byAccount.get(account.slug) ?? {
       slug: account.slug,
@@ -918,16 +844,17 @@ export function calculateMonthlyFinancials(
 
     // Stripe rows have currency already normalised to the account currency
     // (EUR/USD/…); blockchain rows use tx.amount in the account's token unit.
-    // For both, sign comes from tx.type (CREDIT = into account, DEBIT = out).
+    // CREDIT/MINT → into the account; DEBIT/BURN → out of the account.
     const value =
       tx.provider === "stripe"
         ? Math.abs(tx.normalizedAmount)
         : Math.abs(tx.amount);
 
-    if (tx.type === "CREDIT") {
+    const direction = txDirection(tx);
+    if (direction === "CREDIT") {
       existing.income += value;
       totalIncome += value;
-    } else if (tx.type === "DEBIT") {
+    } else {
       existing.expenses += value;
       totalExpenses += value;
     }

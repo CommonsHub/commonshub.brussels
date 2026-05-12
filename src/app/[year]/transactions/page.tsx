@@ -5,11 +5,13 @@ import { isAdmin } from "@/lib/admin-check";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FinanceTransactionTable } from "@/components/finance-transaction-table";
 import { DATA_DIR } from "@/lib/data-paths";
-import { counterpartyNip73Id, transactionNip73Id } from "@/lib/nip73";
-import type {
-  CounterpartiesFile,
-  CounterpartyMetadata,
-} from "@/types/counterparties";
+import {
+  readMonthlyTransactions,
+  readMonthlyCounterpartyMetadata,
+  augmentTransaction,
+} from "@/lib/transactions";
+import type { CounterpartyMetadata } from "@/types/counterparties";
+import type { Transaction } from "@/types/transactions";
 
 interface PageProps {
   params: Promise<{
@@ -17,151 +19,36 @@ interface PageProps {
   }>;
 }
 
-interface TransactionMetadata {
-  collective: string;
-  project: string | null;
-  event: string | null;
-  category: string;
-  tags: string[];
-  description: string;
-}
-
-interface Transaction {
-  id: string;
-  provider: "etherscan" | "stripe";
-  chain: string | null;
-  account: string;
-  accountSlug: string;
-  accountName: string;
-  currency: string;
-  value: string;
-  normalizedAmount: number; // in cents
-  type: "CREDIT" | "DEBIT";
-  counterparty: string;
-  timestamp: number;
-  txHash?: string;
-  stripeChargeId?: string;
-  metadata: TransactionMetadata;
-}
-
-interface TransactionsFile {
-  month: string;
-  generatedAt: string;
-  transactions: Transaction[];
-}
-
-/**
- * Load all transactions from consolidated files for a year
- */
-async function loadAllYearlyTransactions(year: string): Promise<Transaction[]> {
+function listMonths(year: string): string[] {
   const yearPath = path.join(DATA_DIR, year);
-
-  if (!fs.existsSync(yearPath)) {
-    return [];
-  }
-
-  const allTransactions: Transaction[] = [];
-
-  const monthDirs = fs
+  if (!fs.existsSync(yearPath)) return [];
+  return fs
     .readdirSync(yearPath, { withFileTypes: true })
-    .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name))
-    .map((dirent) => dirent.name)
+    .filter((d) => d.isDirectory() && /^\d{2}$/.test(d.name))
+    .map((d) => d.name)
     .sort();
-
-  for (const month of monthDirs) {
-    const filePath = path.join(DATA_DIR, year, month, "generated", "transactions.json");
-
-    if (fs.existsSync(filePath)) {
-      try {
-        const fileContent = fs.readFileSync(filePath, "utf-8");
-        const data: TransactionsFile = JSON.parse(fileContent);
-        allTransactions.push(...data.transactions);
-      } catch (error) {
-        console.error(`Error reading transaction file for ${year}-${month}:`, error);
-      }
-    }
-  }
-
-  return allTransactions;
-}
-
-/**
- * Load counterparty metadata from all months
- */
-async function loadYearlyCounterpartyMetadata(year: string): Promise<Map<string, CounterpartyMetadata>> {
-  const yearPath = path.join(DATA_DIR, year);
-  const metadataMap = new Map<string, CounterpartyMetadata>();
-
-  if (!fs.existsSync(yearPath)) {
-    return metadataMap;
-  }
-
-  const monthDirs = fs
-    .readdirSync(yearPath, { withFileTypes: true })
-    .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name))
-    .map((dirent) => dirent.name)
-    .sort();
-
-  for (const month of monthDirs) {
-    const filePath = path.join(DATA_DIR, year, month, "generated", "counterparties.json");
-
-    if (fs.existsSync(filePath)) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        const data: CounterpartiesFile = JSON.parse(content);
-        for (const [id, meta] of Object.entries(data.counterparties ?? {})) {
-          metadataMap.set(id, meta);
-        }
-      } catch (error) {
-        console.error(`Error reading counterparty metadata for ${year}-${month}:`, error);
-      }
-    }
-  }
-
-  return metadataMap;
 }
 
 export default async function YearlyTransactionsPage({ params }: PageProps) {
   const { year } = await params;
+  const months = listMonths(year);
+  if (months.length === 0) notFound();
 
-  // Load all transactions for the year
-  const transactions = await loadAllYearlyTransactions(year);
-
-  if (transactions.length === 0) {
-    notFound();
+  const transactions: Transaction[] = [];
+  const counterpartyMetadataMap = new Map<string, CounterpartyMetadata>();
+  for (const month of months) {
+    transactions.push(...readMonthlyTransactions(year, month));
+    const meta = readMonthlyCounterpartyMetadata(year, month);
+    for (const [id, m] of meta) counterpartyMetadataMap.set(id, m);
   }
 
-  // Check if user is admin
+  if (transactions.length === 0) notFound();
+
   const userIsAdmin = await isAdmin();
 
-  // Load counterparty metadata
-  const counterpartyMetadataMap = await loadYearlyCounterpartyMetadata(year);
-
-  // Augment transactions with counterparty metadata
-  const augmentedTransactions = transactions.map((tx) => {
-    const counterpartyId = counterpartyNip73Id(tx) ?? undefined;
-    const transactionUri = transactionNip73Id(tx) ?? undefined;
-    const counterpartyMetadata = counterpartyId
-      ? counterpartyMetadataMap.get(counterpartyId)
-      : undefined;
-
-    return {
-      ...tx,
-      transactionId: tx.id,
-      transactionUri,
-      counterpartyId,
-      counterpartyMetadata,
-      // Add TokenTransfer-like fields for compatibility
-      hash: tx.txHash,
-      timeStamp: tx.timestamp.toString(),
-      from: tx.type === "DEBIT" ? tx.account : tx.counterparty,
-      to: tx.type === "CREDIT" ? tx.account : tx.counterparty,
-      transactionMetadata: tx.metadata,
-    };
-  });
-
-  // Sort transactions by timestamp (newest first)
-  augmentedTransactions.sort((a, b) => b.timestamp - a.timestamp);
+  const augmentedTransactions = transactions
+    .map((tx) => augmentTransaction(tx, counterpartyMetadataMap))
+    .sort((a, b) => b.timestamp - a.timestamp);
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
@@ -174,7 +61,6 @@ export default async function YearlyTransactionsPage({ params }: PageProps) {
         </p>
       </div>
 
-      {/* Transactions Table */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-xl">Transactions</CardTitle>
