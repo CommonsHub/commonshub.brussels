@@ -20,6 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { InlineDescriptionEditor } from "@/components/inline-description-editor";
 import { WalletAddress } from "@/components/wallet-address";
 import { addressFromUri, chainFromUri, txHashFromUri } from "@/lib/nip73";
@@ -392,7 +400,7 @@ const TransactionRow = memo(function TransactionRow({
         }}
         style={{ cursor: canEditRows ? "pointer" : "default" }}
       >
-        {isAdmin && (
+        {canEditRows && (
           <td className="py-2.5 px-4">
             <input
               type="checkbox"
@@ -605,7 +613,7 @@ const TransactionRow = memo(function TransactionRow({
       {isExpanded && (
         <tr className="bg-muted/20 border-b">
           <td
-            colSpan={7 + (isAdmin ? 1 : 0) + (showAccountColumn ? 1 : 0)}
+            colSpan={7 + (canEditRows ? 1 : 0) + (showAccountColumn ? 1 : 0)}
             className="py-4 px-6"
           >
             <ExpandedRowDetails tx={tx} enrichment={enrichment} />
@@ -1079,8 +1087,8 @@ export function FinanceTransactionTable({
   }, []);
   const [batchCollective, setBatchCollective] = useState("");
   const [batchCategory, setBatchCategory] = useState("");
-  const [batchNote, setBatchNote] = useState("");
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [counterpartFilter, setCounterpartFilter] = useState<string>("all");
   const [minAmount, setMinAmount] = useState<string>("");
   const [maxAmount, setMaxAmount] = useState<string>("");
@@ -1806,44 +1814,36 @@ export function FinanceTransactionTable({
     });
   }, []);
 
-  const toggleAll = () => {
-    if (selectedTransactions.size === filteredTransactions.length) {
-      setSelectedTransactions(new Set());
-    } else {
-      setSelectedTransactions(
-        new Set(filteredTransactions.map((tx) => tx.transactionId))
-      );
-    }
+  // Header checkbox toggles the current page only (Gmail-style). If the
+  // user wants every matching row across pages they click the "select all
+  // N matching" link in the selection banner.
+  const togglePage = () => {
+    const pageIds = pagedTransactions.map((tx) => tx.transactionId);
+    const allPageSelected = pageIds.every((id) =>
+      selectedTransactions.has(id)
+    );
+    setSelectedTransactions((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
   };
 
-  const fmtSelectedTotal = useMemo(
-    () =>
-      new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: tokenDecimals,
-      }),
-    [tokenDecimals]
-  );
+  const selectAllFiltered = () => {
+    setSelectedTransactions(
+      new Set(filteredTransactions.map((tx) => tx.transactionId))
+    );
+  };
 
-  const selectedTotal = useMemo(() => {
-    // Sum the human-unit amount (tx.amount is already the parsed number).
-    // chb writes tx.value as a decimal string ("3.000000"), which isn't
-    // a valid BigInt input, so we can't accumulate token-level integers
-    // any more.
-    let total = 0;
-    transactions.forEach((tx) => {
-      if (selectedTransactions.has(tx.transactionId)) {
-        const isIncoming =
-          tx.to?.toLowerCase() === accountAddress?.toLowerCase();
-        const value = Number(tx.amount ?? Number(tx.value) ?? 0);
-        total += isIncoming ? value : -value;
-      }
-    });
-    return total;
-  }, [selectedTransactions, transactions, accountAddress]);
+  const clearSelection = () => setSelectedTransactions(new Set());
 
   const handleBatchUpdate = async () => {
-    if (selectedTransactions.size < 2) return;
+    if (selectedTransactions.size < 1) return;
+    if (!batchCollective && !batchCategory) return;
 
     setIsBatchUpdating(true);
     try {
@@ -1857,12 +1857,13 @@ export function FinanceTransactionTable({
 
       await Promise.all(
         selectedRows.map((tx) =>
-          publish(tx.transactionUri!, {
-            content: batchNote || undefined,
-            tags: tagPatch,
-          })
+          publish(tx.transactionUri!, { tags: tagPatch })
         )
       );
+      setBatchDialogOpen(false);
+      setBatchCollective("");
+      setBatchCategory("");
+      clearSelection();
     } catch (error) {
       console.error("Error batch updating transactions:", error);
       alert("Failed to publish annotations");
@@ -2065,16 +2066,19 @@ export function FinanceTransactionTable({
       <table className="w-full">
         <thead className="border-b bg-muted/30">
           <tr className="text-xs text-muted-foreground">
-            {isAdmin && (
+            {canEditRows && (
               <th className="text-left py-2 px-4 font-medium w-8">
                 <input
                   type="checkbox"
                   checked={
-                    selectedTransactions.size === filteredTransactions.length &&
-                    filteredTransactions.length > 0
+                    pagedTransactions.length > 0 &&
+                    pagedTransactions.every((tx) =>
+                      selectedTransactions.has(tx.transactionId)
+                    )
                   }
-                  onChange={toggleAll}
+                  onChange={togglePage}
                   className="cursor-pointer"
+                  title="Select this page"
                 />
               </th>
             )}
@@ -2091,7 +2095,7 @@ export function FinanceTransactionTable({
           </tr>
           {/* Filter row */}
           <tr className="bg-muted/10 border-b">
-            {isAdmin && <th className="py-2 px-4"></th>}
+            {canEditRows && <th className="py-2 px-4"></th>}
             <th className="py-2 px-4 w-24">
               {viewScope === "month" && weekContext ? (
                 <Select value={weekFilter} onValueChange={setWeekFilter}>
@@ -2332,7 +2336,7 @@ export function FinanceTransactionTable({
         </tbody>
         <tfoot className="bg-muted/20 border-t-2 border-gray-300 font-semibold">
           <tr>
-            {isAdmin && <td className="py-3 px-4"></td>}
+            {canEditRows && <td className="py-3 px-4"></td>}
             <td className="py-3 px-4" colSpan={2}>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-sm">
@@ -2465,77 +2469,115 @@ export function FinanceTransactionTable({
         </div>
       )}
 
-      {/* Batch editing footer */}
-      {isAdmin && selectedTransactions.size >= 2 && (
-        <div className="mt-4 p-4 bg-muted/30 border-t flex items-center gap-4">
-          <div className="font-medium">
-            {selectedTransactions.size} transactions selected (total{" "}
-            <span
-              className={
-                selectedTotal >= 0 ? "text-green-600" : "text-red-600"
-              }
-            >
-              {selectedTotal >= 0 ? "+" : "-"}
-              {(() => {
-                const abs = Math.abs(selectedTotal);
-                const display = fmtSelectedTotal.format(abs);
-                const isEur =
-                  tokenSymbol === "EUR" ||
-                  tokenSymbol === "EURe" ||
-                  tokenSymbol === "EURb";
-                return isEur
-                  ? `€${display}${tokenSymbol === "EUR" ? "" : ` ${tokenSymbol}`}`
-                  : `${display} ${tokenSymbol}`;
-              })()}
+      {/* Selection banner — appears whenever ≥1 row is checked. */}
+      {canEditRows && selectedTransactions.size > 0 && (
+        <div className="mt-4 px-4 py-2 bg-muted/30 border-y flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="font-medium">
+              {selectedTransactions.size} selected
             </span>
-            )
+            {selectedTransactions.size < filteredTransactions.length && (
+              <button
+                type="button"
+                onClick={selectAllFiltered}
+                className="text-primary hover:underline"
+              >
+                Select all {filteredTransactions.length} matching
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="text-muted-foreground hover:underline"
+            >
+              Clear
+            </button>
           </div>
-          <Select value={batchCollective} onValueChange={setBatchCollective}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
-              <SelectValue placeholder="Collective" />
-            </SelectTrigger>
-            <SelectContent>
-              {collectives.map((slug) => (
-                <SelectItem key={slug} value={slug} className="text-xs">
-                  {collectivesObj[slug]?.name || slug}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={batchCategory} onValueChange={setBatchCategory}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              {(selectedTotal >= 0
-                ? categoriesObj.credit || ["other"]
-                : categoriesObj.debit || ["other"]
-              ).map((cat: string) => (
-                <SelectItem key={cat} value={cat} className="text-xs">
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <input
-            type="text"
-            value={batchNote}
-            onChange={(e) => setBatchNote(e.target.value)}
-            placeholder="note"
-            className="text-xs border rounded px-2 py-1 h-8 flex-1 max-w-[200px]"
-          />
-          <button
-            onClick={handleBatchUpdate}
-            disabled={
-              isBatchUpdating ||
-              (!batchCollective && !batchCategory && !batchNote)
-            }
-            className="text-xs bg-primary text-primary-foreground px-4 py-1 h-8 rounded hover:bg-primary/90 disabled:opacity-50"
+          <Button
+            size="sm"
+            onClick={() => setBatchDialogOpen(true)}
           >
-            {isBatchUpdating ? "Updating..." : "Update"}
-          </button>
+            Edit selected…
+          </Button>
         </div>
       )}
+
+      {/* Bulk edit modal */}
+      <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Edit {selectedTransactions.size} transaction
+              {selectedTransactions.size !== 1 ? "s" : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Set a collective and/or category. Empty fields leave the
+              existing value unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                Collective
+              </label>
+              <Select
+                value={batchCollective}
+                onValueChange={setBatchCollective}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Leave unchanged" />
+                </SelectTrigger>
+                <SelectContent>
+                  {collectives.map((slug) => (
+                    <SelectItem key={slug} value={slug}>
+                      {collectivesObj[slug]?.name || slug}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                Category
+              </label>
+              <Select
+                value={batchCategory}
+                onValueChange={setBatchCategory}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Leave unchanged" />
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBatchDialogOpen(false)}
+              disabled={isBatchUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBatchUpdate}
+              disabled={
+                isBatchUpdating || (!batchCollective && !batchCategory)
+              }
+            >
+              {isBatchUpdating
+                ? "Updating…"
+                : `Update ${selectedTransactions.size} row${selectedTransactions.size !== 1 ? "s" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
