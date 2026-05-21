@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 
 // Mock fetch for API calls
-const mockFetch = jest.fn();
+const mockFetch = jest.fn<any>();
 global.fetch = mockFetch as any;
 
 describe("Member Profile Page", () => {

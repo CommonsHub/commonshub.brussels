@@ -26,7 +26,7 @@ describe("Notification Services", () => {
 
   describe("Discord Thread Creation", () => {
     test("calls Discord API with correct parameters", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => ({ id: "thread-123" }),
       } as Response)
@@ -63,7 +63,7 @@ describe("Notification Services", () => {
     })
 
     test("truncates thread name to 100 characters", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => ({ id: "thread-123" }),
       } as Response)

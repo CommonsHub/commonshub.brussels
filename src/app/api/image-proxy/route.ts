@@ -116,7 +116,7 @@ async function handleLocalPath(
     }
 
     // Read the file
-    let buffer = fs.readFileSync(resolvedPath);
+    let buffer: Buffer = fs.readFileSync(resolvedPath);
     const ext = path.extname(resolvedPath).toLowerCase();
     const contentTypeMap: Record<string, string> = {
       ".jpg": "image/jpeg",
@@ -136,7 +136,7 @@ async function handleLocalPath(
       contentType = "image/jpeg"; // Resized images are always JPEG
     }
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": getCacheControl(request, true),

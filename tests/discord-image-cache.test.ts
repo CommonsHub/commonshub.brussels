@@ -98,7 +98,7 @@ describe("Discord Image Cache", () => {
 
     if (messages && messages.length > 0) {
       // Check that we have recent messages
-      const recentMessages = messages.filter((msg) => {
+      const recentMessages = messages.filter((msg: any) => {
         const msgDate = new Date(msg.timestamp)
         return msgDate >= testWeekStart && msgDate <= testWeekEnd
       })
@@ -135,7 +135,7 @@ describe("Discord Image Cache", () => {
     }
 
     // Filter to last week
-    const weekMessages = messages.filter((msg) => {
+    const weekMessages = messages.filter((msg: any) => {
       const msgDate = new Date(msg.timestamp)
       return msgDate >= testWeekStart && msgDate <= testWeekEnd
     })
@@ -148,7 +148,7 @@ describe("Discord Image Cache", () => {
 
     // Find messages with images
     const messagesWithImages = weekMessages.filter(
-      (msg) => msg.attachments && msg.attachments.length > 0
+      (msg: any) => msg.attachments && msg.attachments.length > 0
     )
 
     if (messagesWithImages.length === 0) {
@@ -286,7 +286,7 @@ describe("Discord Image Cache", () => {
     // Group messages by month
     const messagesByMonth = new Map<string, number>()
 
-    messages.forEach((msg) => {
+    messages.forEach((msg: any) => {
       const date = new Date(msg.timestamp)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
       messagesByMonth.set(monthKey, (messagesByMonth.get(monthKey) || 0) + 1)

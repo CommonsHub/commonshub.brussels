@@ -3,14 +3,15 @@
  */
 
 import React from "react";
+import "@testing-library/jest-dom/jest-globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, jest, beforeEach, test } from "@jest/globals";
 import { ContactForm } from "@/components/contact-form";
 
 describe("ContactForm", () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
-    Element.prototype.scrollIntoView = jest.fn();
+    global.fetch = jest.fn<typeof fetch>();
+    Element.prototype.scrollIntoView = jest.fn<any>();
   });
 
   async function fillRequiredFields(message: string) {
@@ -45,10 +46,10 @@ describe("ContactForm", () => {
   });
 
   test("shows a success message after sending", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
       ok: true,
       json: async () => ({}),
-    });
+    } as Response);
 
     render(<ContactForm />);
 
@@ -69,10 +70,10 @@ describe("ContactForm", () => {
   });
 
   test("shows an error message when the request fails", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
       ok: false,
       json: async () => ({ error: "Unable to send right now." }),
-    });
+    } as Response);
 
     render(<ContactForm />);
 

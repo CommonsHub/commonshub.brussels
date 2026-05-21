@@ -10,7 +10,7 @@
 import { describe, test, expect, jest, beforeEach, afterEach } from "@jest/globals"
 
 // Mock Resend before importing any modules
-const mockResendSend = jest.fn()
+const mockResendSend = jest.fn<any>()
 jest.mock("resend", () => ({
   Resend: jest.fn().mockImplementation(() => ({
     emails: {
@@ -35,7 +35,7 @@ describe("Form API Integration", () => {
     mockResendSend.mockResolvedValue({ id: "email-123" })
 
     // Mock Discord API calls
-    global.fetch = jest.fn()
+    global.fetch = jest.fn<any>()
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: "message-123" }),
@@ -92,13 +92,13 @@ describe("Form API Integration", () => {
       await POST(request)
 
       // Find the notification email (to Commons Hub)
-      const calls = mockResendSend.mock.calls
+      const calls = mockResendSend.mock.calls as any[][]
       const notificationCall = calls.find((call: any) =>
         call[0].to?.includes("hello@commonshub.brussels")
       )
 
       expect(notificationCall).toBeDefined()
-      expect(notificationCall[0]).toMatchObject({
+      expect(notificationCall![0]).toMatchObject({
         to: ["hello@commonshub.brussels"],
         cc: ["jane@example.com"],
         subject: expect.stringContaining("Booking a room"),
@@ -121,14 +121,14 @@ describe("Form API Integration", () => {
 
       await POST(request)
 
-      const calls = mockResendSend.mock.calls
+      const calls = mockResendSend.mock.calls as any[][]
       const confirmationCall = calls.find((call: any) =>
         call[0].to?.includes("bob@example.com") &&
         call[0].subject?.includes("We received your message")
       )
 
       expect(confirmationCall).toBeDefined()
-      expect(confirmationCall[0]).toMatchObject({
+      expect(confirmationCall![0]).toMatchObject({
         from: "Commons Hub Brussels <hello@commonshub.brussels>",
         to: ["bob@example.com"],
       })
@@ -159,7 +159,7 @@ describe("Form API Integration", () => {
 
   describe("Contact Form Discord Integration", () => {
     test("creates Discord thread with contact details", async () => {
-      const mockFetch = jest.fn()
+      const mockFetch = jest.fn<any>()
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ id: "message-456" }),
@@ -191,14 +191,14 @@ describe("Form API Integration", () => {
       expect(mockFetch).toHaveBeenCalled()
 
       // Find the message creation call
-      const messageCalls = mockFetch.mock.calls.filter((call: any) =>
+      const messageCalls = (mockFetch.mock.calls as any[][]).filter((call: any) =>
         call[0].includes("/channels/") && call[0].includes("/messages")
       )
 
       expect(messageCalls.length).toBeGreaterThan(0)
 
       // Check authorization header
-      const firstCall = messageCalls[0]
+      const firstCall = messageCalls[0] as any[]
       expect(firstCall[1].headers.Authorization).toContain("Bot test-discord-token")
     })
   })
@@ -233,16 +233,16 @@ describe("Form API Integration", () => {
       expect(mockResendSend).toHaveBeenCalledTimes(2)
 
       // Check confirmation email
-      const confirmationCall = mockResendSend.mock.calls.find((call: any) =>
+      const confirmationCall = (mockResendSend.mock.calls as any[][]).find((call: any) =>
         call[0].to?.includes("sarah@example.com")
       )
-      expect(confirmationCall[0].subject).toContain("Booking Request Received")
+      expect(confirmationCall![0].subject).toContain("Booking Request Received")
 
       // Check notification email
-      const notificationCall = mockResendSend.mock.calls.find((call: any) =>
+      const notificationCall = (mockResendSend.mock.calls as any[][]).find((call: any) =>
         call[0].to?.includes("hello@commonshub.brussels")
       )
-      expect(notificationCall[0].subject).toContain("New Booking Request")
+      expect(notificationCall![0].subject).toContain("New Booking Request")
     })
 
     test("marks private bookings in email subject", async () => {
@@ -271,10 +271,10 @@ describe("Form API Integration", () => {
 
       await POST(request)
 
-      const notificationCall = mockResendSend.mock.calls.find((call: any) =>
+      const notificationCall = (mockResendSend.mock.calls as any[][]).find((call: any) =>
         call[0].to?.includes("hello@commonshub.brussels")
       )
-      expect(notificationCall[0].subject).toContain("[PRIVATE]")
+      expect(notificationCall![0].subject).toContain("[PRIVATE]")
     })
 
     test("includes all booking options in email", async () => {
@@ -303,11 +303,11 @@ describe("Form API Integration", () => {
 
       await POST(request)
 
-      const notificationCall = mockResendSend.mock.calls.find((call: any) =>
+      const notificationCall = (mockResendSend.mock.calls as any[][]).find((call: any) =>
         call[0].to?.includes("hello@commonshub.brussels")
       )
 
-      const html = notificationCall[0].html
+      const html = notificationCall![0].html
       expect(html).toContain("Projector")
       expect(html).toContain("Whiteboard")
       expect(html).toContain("Facilitation kit")
@@ -318,7 +318,7 @@ describe("Form API Integration", () => {
 
   describe("Booking Request Discord Integration", () => {
     test("creates Discord thread with booking details", async () => {
-      const mockFetch = jest.fn()
+      const mockFetch = jest.fn<any>()
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ id: "message-789" }),
@@ -357,7 +357,7 @@ describe("Form API Integration", () => {
 
       expect(mockFetch).toHaveBeenCalled()
 
-      const messageCalls = mockFetch.mock.calls.filter((call: any) =>
+      const messageCalls = (mockFetch.mock.calls as any[][]).filter((call: any) =>
         call[0].includes("/channels/") && call[0].includes("/messages")
       )
 

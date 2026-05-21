@@ -144,10 +144,10 @@ export function RecentContributors() {
               username: contributor.profile.username,
               displayName: contributor.profile.name,
               avatar: contributor.profile.avatar_url,
+              tokensReceived: contributor.tokens.in,
             }}
             size="sm"
             showTokens={true}
-            tokensReceived={contributor.tokens.in}
           />
         ))}
       </div>

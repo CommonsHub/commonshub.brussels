@@ -29,6 +29,23 @@ interface CounterpartSummary {
   accountSlug?: string;
 }
 
+type FinanceAccount = (typeof settings.finance.accounts)[number];
+type EtherscanFinanceAccount = FinanceAccount & {
+  provider: "etherscan";
+  address: string;
+  chain: string;
+  token: { symbol: string; decimals: string | number };
+};
+
+function isEtherscanAccount(account: FinanceAccount | undefined): account is EtherscanFinanceAccount {
+  return Boolean(
+    account?.provider === "etherscan" &&
+    typeof account.address === "string" &&
+    typeof account.chain === "string" &&
+    account.token !== undefined
+  );
+}
+
 /**
  * Load transactions for all accounts in a month
  */
@@ -39,7 +56,7 @@ async function loadAllMonthlyTransactions(
   const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const transactionsByAccount = new Map<string, TokenTransfer[]>();
 
-  const etherscanAccounts = settings.finance.accounts.filter((a) => a.provider === "etherscan");
+  const etherscanAccounts = settings.finance.accounts.filter(isEtherscanAccount);
 
   for (const account of etherscanAccounts) {
     const filePath = path.join(
@@ -77,7 +94,7 @@ async function loadAllMoneriumOrders(
   const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
   const ordersByAccount = new Map<string, Map<string, MoneriumOrder>>();
 
-  const etherscanAccounts = settings.finance.accounts.filter((a) => a.provider === "etherscan");
+  const etherscanAccounts = settings.finance.accounts.filter(isEtherscanAccount);
 
   for (const account of etherscanAccounts) {
     const filePath = path.join(
@@ -193,8 +210,8 @@ export default async function MonthlyFinanceAggregatePage({ params }: PageProps)
     const counterpartBreakdown = new Map<string, CounterpartSummary>();
 
     for (const tx of allAugmentedTransactions) {
-      const account = settings.finance.accounts.find((a) => a.slug === tx.accountSlug);
-      if (!account || account.provider !== "etherscan") continue;
+      const account = settings.finance.accounts.find((a): a is EtherscanFinanceAccount => a.slug === tx.accountSlug && isEtherscanAccount(a));
+      if (!account) continue;
 
       const isIncoming = tx.to.toLowerCase() === account.address.toLowerCase();
       const amount = BigInt(tx.value);
@@ -248,8 +265,8 @@ export default async function MonthlyFinanceAggregatePage({ params }: PageProps)
 
   // Calculate totals by account
   const accountSummaries = Array.from(transactionsByAccount.entries()).map(([accountSlug, transactions]) => {
-    const account = settings.finance.accounts.find((a) => a.slug === accountSlug);
-    if (!account || account.provider !== "etherscan") return null;
+    const account = settings.finance.accounts.find((a): a is EtherscanFinanceAccount => a.slug === accountSlug && isEtherscanAccount(a));
+    if (!account) return null;
 
     let incoming = BigInt(0);
     let outgoing = BigInt(0);
@@ -346,7 +363,7 @@ export default async function MonthlyFinanceAggregatePage({ params }: PageProps)
                     {customers.slice(0, 10).map((customer, idx) => {
                       // Get token symbol from account if it's an account-based entry
                       const account = customer.accountSlug
-                        ? settings.finance.accounts.find(a => a.slug === customer.accountSlug)
+                        ? settings.finance.accounts.find((a): a is EtherscanFinanceAccount => a.slug === customer.accountSlug && isEtherscanAccount(a))
                         : null;
                       const decimals = account ? parseInt(account.token.decimals.toString()) : 18;
                       const tokenSymbol = account?.token.symbol || 'EUR';
@@ -381,7 +398,7 @@ export default async function MonthlyFinanceAggregatePage({ params }: PageProps)
                     {vendors.slice(0, 10).map((vendor, idx) => {
                       // Get token symbol from account if it's an account-based entry
                       const account = vendor.accountSlug
-                        ? settings.finance.accounts.find(a => a.slug === vendor.accountSlug)
+                        ? settings.finance.accounts.find((a): a is EtherscanFinanceAccount => a.slug === vendor.accountSlug && isEtherscanAccount(a))
                         : null;
                       const decimals = account ? parseInt(account.token.decimals.toString()) : 18;
                       const tokenSymbol = account?.token.symbol || 'EUR';

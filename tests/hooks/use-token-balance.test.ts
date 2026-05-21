@@ -20,14 +20,14 @@ describe("useTokenBalance", () => {
   beforeEach(() => {
     jest.clearAllMocks()
     // Mock fetch
-    global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>
+    global.fetch = jest.fn<any>() as jest.MockedFunction<typeof fetch>
   })
 
   test("returns null balance when user is not logged in", async () => {
     mockUseSession.mockReturnValue({
       data: null,
       status: "unauthenticated",
-      update: jest.fn(),
+      update: jest.fn<any>(),
     })
 
     const { result } = renderHook(() => useTokenBalance())
@@ -54,7 +54,7 @@ describe("useTokenBalance", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       },
       status: "authenticated",
-      update: jest.fn(),
+      update: jest.fn<any>(),
     })
 
     const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>
@@ -96,7 +96,7 @@ describe("useTokenBalance", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       },
       status: "authenticated",
-      update: jest.fn(),
+      update: jest.fn<any>(),
     })
 
     const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>
@@ -130,7 +130,7 @@ describe("useTokenBalance", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       },
       status: "authenticated",
-      update: jest.fn(),
+      update: jest.fn<any>(),
     })
 
     const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>

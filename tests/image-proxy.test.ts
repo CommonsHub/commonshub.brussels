@@ -10,14 +10,14 @@ import fs from "fs"
 import path from "path"
 
 // Mock fetch for external URL tests
-global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>
+global.fetch = jest.fn<any>() as jest.MockedFunction<typeof fetch>
 
 // Mock sharp for image resizing
 const mockSharp = {
-  rotate: jest.fn().mockReturnThis(),
-  resize: jest.fn().mockReturnThis(),
-  jpeg: jest.fn().mockReturnThis(),
-  toBuffer: jest.fn().mockResolvedValue(Buffer.from("resized-image-data")),
+  rotate: jest.fn<any>().mockReturnThis(),
+  resize: jest.fn<any>().mockReturnThis(),
+  jpeg: jest.fn<any>().mockReturnThis(),
+  toBuffer: jest.fn<any>().mockResolvedValue(Buffer.from("resized-image-data")),
 }
 jest.mock("sharp", () => ({
   __esModule: true,
@@ -85,7 +85,7 @@ describe("Image Proxy API Route", () => {
       const mockResponse = {
         ok: true,
         headers: new Headers({ "content-type": "image/jpeg" }),
-        arrayBuffer: jest.fn().mockResolvedValue(mockImageData),
+        arrayBuffer: jest.fn<any>().mockResolvedValue(mockImageData),
       }
       ;(global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue(
         mockResponse as any
@@ -113,7 +113,7 @@ describe("Image Proxy API Route", () => {
       const mockResponse = {
         ok: true,
         headers: new Headers({ "content-type": "image/jpeg" }),
-        arrayBuffer: jest.fn().mockResolvedValue(mockImageData),
+        arrayBuffer: jest.fn<any>().mockResolvedValue(mockImageData),
       }
       ;(global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue(
         mockResponse as any
@@ -160,7 +160,7 @@ describe("Image Proxy API Route", () => {
       const mockResponse = {
         ok: true,
         headers: new Headers({ "content-type": "image/png" }),
-        arrayBuffer: jest.fn().mockResolvedValue(
+        arrayBuffer: jest.fn<any>().mockResolvedValue(
           mockImageData.buffer.slice(
             mockImageData.byteOffset,
             mockImageData.byteOffset + mockImageData.byteLength
@@ -237,7 +237,7 @@ describe("Image Proxy API Route", () => {
       const mockResponse = {
         ok: true,
         headers: new Headers({ "content-type": "image/jpeg" }),
-        arrayBuffer: jest.fn().mockResolvedValue(mockImageData),
+        arrayBuffer: jest.fn<any>().mockResolvedValue(mockImageData),
       }
       ;(global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue(
         mockResponse as any
@@ -258,7 +258,7 @@ describe("Image Proxy API Route", () => {
       const mockResponse = {
         ok: true,
         headers: new Headers({ "content-type": "image/jpeg" }),
-        arrayBuffer: jest.fn().mockResolvedValue(mockImageData),
+        arrayBuffer: jest.fn<any>().mockResolvedValue(mockImageData),
       }
       ;(global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue(
         mockResponse as any

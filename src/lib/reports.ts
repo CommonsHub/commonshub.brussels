@@ -35,7 +35,7 @@ export interface PopularPhoto {
   proxyUrl: string;
   id: string;
   author: UserInfo;
-  reactions: Array<{ emoji: string; count: number }>;
+  reactions: Array<{ emoji: string; count: number; me?: boolean }>;
   totalReactions: number;
   message: string;
   timestamp: string;
@@ -215,7 +215,7 @@ export function readYearlyImages(year: string): PopularPhoto[] {
       proxyUrl: img.proxyUrl,
       id: img.id,
       author: img.author,
-      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count })),
+      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
       totalReactions: img.totalReactions,
       message: img.message,
       timestamp: img.timestamp,
@@ -267,7 +267,7 @@ export function readGeneratedImages(year: string, month: string): PopularPhoto[]
       proxyUrl: img.proxyUrl,
       id: img.id,
       author: img.author,
-      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count })),
+      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
       totalReactions: img.totalReactions,
       message: img.message,
       timestamp: img.timestamp,
@@ -958,6 +958,7 @@ export function getMonthlyReportData(
     month,
     activeMembers: {
       count: activeMembers.count,
+      userIds: activeMembers.userIds,
       users: enrichedUsers,
     },
     photos,
@@ -1091,6 +1092,7 @@ export function getYearlyReportData(year: string): YearlyReportData {
   // Build active members from contributors data (already collected above)
   const activeMembers = {
     count: yearlyActiveMembers.size,
+    userIds: Array.from(yearlyActiveMembers),
     users: [] as UserInfo[], // Users are loaded separately if needed
   };
 

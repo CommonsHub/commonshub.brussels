@@ -39,6 +39,23 @@ interface CounterpartSummary {
   transactionCount: number;
 }
 
+type FinanceAccount = (typeof settings.finance.accounts)[number];
+type EtherscanFinanceAccount = FinanceAccount & {
+  provider: "etherscan";
+  address: string;
+  chain: string;
+  token: { symbol: string; decimals: string | number };
+};
+
+function isEtherscanAccount(account: FinanceAccount | undefined): account is EtherscanFinanceAccount {
+  return Boolean(
+    account?.provider === "etherscan" &&
+    typeof account.address === "string" &&
+    typeof account.chain === "string" &&
+    account.token !== undefined
+  );
+}
+
 /**
  * Load all transactions for a year
  */
@@ -47,10 +64,10 @@ async function loadYearlyTransactions(
   accountSlug: string
 ): Promise<TokenTransfer[]> {
   const account = settings.finance.accounts.find(
-    (a) => a.slug === accountSlug && a.provider === "etherscan"
+    (a): a is EtherscanFinanceAccount => a.slug === accountSlug && isEtherscanAccount(a)
   );
 
-  if (!account || account.provider !== "etherscan") {
+  if (!account) {
     return [];
   }
 
@@ -269,10 +286,10 @@ export default async function YearlyFinancePage({ params }: PageProps) {
 
   // Find account in settings
   const account = settings.finance.accounts.find(
-    (a) => a.slug === accountSlug && a.provider === "etherscan"
+    (a): a is EtherscanFinanceAccount => a.slug === accountSlug && isEtherscanAccount(a)
   );
 
-  if (!account || account.provider !== "etherscan") {
+  if (!account) {
     notFound();
   }
 
