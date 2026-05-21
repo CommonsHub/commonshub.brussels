@@ -19,7 +19,7 @@ describe("image cache dir fallback", () => {
   test("falls back to OS tmp when DATA_DIR/tmp is not writable", async () => {
     const existsSync = jest.fn((target) => target === "/readonly-data/tmp");
     const statSync = jest.fn(() => ({ isDirectory: () => true }));
-    const mkdirSync = jest.fn();
+    const mkdirSync = jest.fn<any>();
     const accessSync = jest.fn((target) => {
       if (target === "/readonly-data/tmp") {
         const error = new Error("EROFS");
@@ -49,7 +49,7 @@ describe("image cache dir fallback", () => {
     }));
     jest.doMock("sharp", () => ({
       __esModule: true,
-      default: jest.fn(),
+      default: jest.fn<any>(),
     }));
 
     const { getImageCacheDir } = await import("@/lib/image-proxy-server");
@@ -68,12 +68,12 @@ describe("image cache dir fallback", () => {
       (error as NodeJS.ErrnoException).code = "EROFS";
       throw error;
     });
-    const accessSync = jest.fn();
+    const accessSync = jest.fn<any>();
     const sharpChain = {
-      rotate: jest.fn().mockReturnThis(),
-      resize: jest.fn().mockReturnThis(),
-      jpeg: jest.fn().mockReturnThis(),
-      toBuffer: jest.fn().mockResolvedValue(Buffer.from("resized-image")),
+      rotate: jest.fn<any>().mockReturnThis(),
+      resize: jest.fn<any>().mockReturnThis(),
+      jpeg: jest.fn<any>().mockReturnThis(),
+      toBuffer: jest.fn<any>().mockResolvedValue(Buffer.from("resized-image")),
     };
 
     jest.doMock("fs", () => ({

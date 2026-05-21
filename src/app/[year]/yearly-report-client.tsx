@@ -47,6 +47,8 @@ interface YearlyReportData {
     totalIncome: number;
     totalExpenses: number;
     net: number;
+    totalTokensMinted: number;
+    totalTokensBurnt: number;
     monthlyBreakdown: Array<{
       month: string;
       income: number;
@@ -68,6 +70,13 @@ interface MonthlyReportData {
     income: number;
     expenses: number;
     net: number;
+    tokens: {
+      minted: number;
+      burnt: number;
+      net: number;
+      transactionCount: number;
+      activeAccounts: number;
+    };
   };
 }
 

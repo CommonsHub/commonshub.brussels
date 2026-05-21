@@ -10,6 +10,15 @@ interface Introduction {
   attachments?: Array<{ url: string; proxyUrl: string; contentType?: string }>
 }
 
+function withAttachmentIds(
+  attachments: Introduction["attachments"],
+): Array<{ id: string; url: string; proxyUrl: string; contentType?: string }> | undefined {
+  return attachments?.map((attachment, index) => ({
+    id: attachment.url || attachment.proxyUrl || String(index),
+    ...attachment,
+  }))
+}
+
 interface MemberIntroductionProps {
   introductions: Introduction[]
   userMap: Record<string, string>
@@ -83,7 +92,7 @@ export function MemberIntroduction({
               userMap={userMap}
               channelMap={channelMap}
               guildId={guildId}
-              attachments={firstIntro.attachments}
+              attachments={withAttachmentIds(firstIntro.attachments)}
               timestamp={firstIntro.timestamp}
             />
             {/* Inline "show more" link */}
@@ -116,7 +125,7 @@ export function MemberIntroduction({
                 userMap={userMap}
                 channelMap={channelMap}
                 guildId={guildId}
-                attachments={intro.attachments}
+                attachments={withAttachmentIds(intro.attachments)}
                 timestamp={intro.timestamp}
               />
               <p className="text-xs text-muted-foreground mt-3">

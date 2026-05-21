@@ -46,6 +46,13 @@ interface MonthlyReportData {
     income: number;
     expenses: number;
     net: number;
+    tokens: {
+      minted: number;
+      burnt: number;
+      net: number;
+      transactionCount: number;
+      activeAccounts: number;
+    };
     byAccount: Array<{
       slug: string;
       name: string;

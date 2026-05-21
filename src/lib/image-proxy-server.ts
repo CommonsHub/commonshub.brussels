@@ -207,7 +207,7 @@ export async function fetchAndProcessExternalImage(
     }
 
     let contentType = response.headers.get("content-type") || "image/png";
-    let buffer = Buffer.from(await response.arrayBuffer());
+    let buffer: Buffer = Buffer.from(await response.arrayBuffer());
 
     // Apply resizing if size parameter is provided
     if (sizeParam && SIZE_CONFIG[sizeParam]) {
@@ -217,7 +217,7 @@ export async function fetchAndProcessExternalImage(
       contentType = "image/jpeg"; // Resized images are always JPEG
     }
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": `public, max-age=${CACHE_DURATION}, s-maxage=${CACHE_DURATION}`,

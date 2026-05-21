@@ -28,6 +28,23 @@ interface TransactionWithMonerium extends TokenTransfer {
   moneriumOrder?: MoneriumOrder;
 }
 
+type FinanceAccount = (typeof settings.finance.accounts)[number];
+type EtherscanFinanceAccount = FinanceAccount & {
+  provider: "etherscan";
+  address: string;
+  chain: string;
+  token: { symbol: string; decimals: string | number };
+};
+
+function isEtherscanAccount(account: FinanceAccount | undefined): account is EtherscanFinanceAccount {
+  return Boolean(
+    account?.provider === "etherscan" &&
+    typeof account.address === "string" &&
+    typeof account.chain === "string" &&
+    account.token !== undefined
+  );
+}
+
 /**
  * Load transaction data for a specific account and month
  */
@@ -38,10 +55,10 @@ async function loadTransactions(
 ): Promise<TokenTransfer[] | null> {
   // Find account in settings
   const account = settings.finance.accounts.find(
-    (a) => a.slug === accountSlug && a.provider === "etherscan"
+    (a): a is EtherscanFinanceAccount => a.slug === accountSlug && isEtherscanAccount(a)
   );
 
-  if (!account || account.provider !== "etherscan") {
+  if (!account) {
     return null;
   }
 
@@ -230,10 +247,10 @@ export default async function FinancePage({ params }: PageProps) {
 
   // Find account in settings
   const account = settings.finance.accounts.find(
-    (a) => a.slug === accountSlug && a.provider === "etherscan"
+    (a): a is EtherscanFinanceAccount => a.slug === accountSlug && isEtherscanAccount(a)
   );
 
-  if (!account || account.provider !== "etherscan") {
+  if (!account) {
     notFound();
   }
 
@@ -294,7 +311,7 @@ export default async function FinancePage({ params }: PageProps) {
     transactionCount: number;
   }
 
-  let sortedCounterparts: Array<CounterpartSummary & { x: number; y: number; radius: number }> = [];
+  let sortedCounterparts: Array<CounterpartSummary & { x: number; y: number; radius: number; linkWeight: number }> = [];
 
   if (userIsAdmin) {
     const counterpartBreakdown = new Map<string, CounterpartSummary>();

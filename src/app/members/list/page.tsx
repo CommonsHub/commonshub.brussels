@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type ReactElement } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +58,7 @@ function getStatusColor(status: Member["status"]): string {
   }
 }
 
-function getPlanBadge(member: Member): JSX.Element {
+function getPlanBadge(member: Member): ReactElement {
   const isOrg = member.isOrganization;
   if (member.plan === "yearly") {
     return (
@@ -74,7 +74,7 @@ function getPlanBadge(member: Member): JSX.Element {
   );
 }
 
-function getSourceBadge(source?: string): JSX.Element | null {
+function getSourceBadge(source?: string): ReactElement | null {
   if (!source || source === "stripe") return null;
   return (
     <Badge variant="outline" className="text-[10px] px-1 py-0 bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-900 dark:text-orange-200 dark:border-orange-700">

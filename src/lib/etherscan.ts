@@ -12,10 +12,13 @@ export interface TokenTransfer {
   to: string
   value: string
   tokenSymbol: string
+  contractAddress: string
 }
 
 export interface TokenBalance {
   result: string
+  status: string
+  message: string
 }
 
 export interface TokenTransfersResponse {

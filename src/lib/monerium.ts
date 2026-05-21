@@ -27,9 +27,13 @@ export type MoneriumOrder = {
   };
 };
 
+function getEnv(name: string) {
+  return process.env[name];
+}
+
 async function getAccessToken() {
-  const clientId = Deno.env.get("MONERIUM_CLIENT_ID");
-  const clientSecret = Deno.env.get("MONERIUM_CLIENT_SECRET");
+  const clientId = getEnv("MONERIUM_CLIENT_ID");
+  const clientSecret = getEnv("MONERIUM_CLIENT_SECRET");
   if (!clientId || !clientSecret) {
     throw new Error(
       "MONERIUM_CLIENT_ID or MONERIUM_CLIENT_SECRET is not set in the environment"
@@ -58,7 +62,7 @@ export async function getOrders(profileId?: string): Promise<MoneriumOrder[]> {
   const queryParams = new URLSearchParams(params);
 
   const accessToken: string = await getAccessToken();
-  if (!accessToken && Deno.env.get("ENV") !== "test") {
+  if (!accessToken && getEnv("ENV") !== "test") {
     throw new Error("monerium: Failed to get access token");
   }
 
@@ -93,7 +97,7 @@ export const getNewOrders = async (
     console.error("monerium: couldn't load orders");
     return [];
   }
-  if (Deno.env.get("ENV") === "dryrun") {
+  if (getEnv("ENV") === "dryrun") {
     orders.slice(0, 3).map((order, index) => {
       console.log(
         ">>> Processing order:",
@@ -128,7 +132,7 @@ export const getNewOrdersSince = async (
     console.error("monerium: couldn't load orders");
     return [];
   }
-  if (Deno.env.get("ENV") === "dryrun") {
+  if (getEnv("ENV") === "dryrun") {
     orders.slice(0, 3).map((order, index) => {
       console.log(
         ">>> Processing order:",

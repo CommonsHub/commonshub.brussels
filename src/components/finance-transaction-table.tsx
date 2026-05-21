@@ -78,12 +78,12 @@ const fmtTimeGBHM = new Intl.DateTimeFormat("en-GB", {
 });
 
 interface TransactionMetadata {
-  collective: string;
-  project: string | null;
-  event: string | null;
-  category: string;
-  tags: string[];
-  description: string;
+  collective?: string;
+  project?: string | null;
+  event?: string | null;
+  category?: string;
+  tags?: string[];
+  description?: string;
 }
 
 // Sentinel value used wherever a collective is missing (no chb metadata

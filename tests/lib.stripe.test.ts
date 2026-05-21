@@ -37,7 +37,7 @@ describe("Stripe API", () => {
         pending: [{ amount: 5000, currency: "eur" }],
       };
 
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => mockBalance,
       } as Response);
@@ -57,7 +57,7 @@ describe("Stripe API", () => {
     });
 
     test("throws error on API failure", async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: false,
         statusText: "Unauthorized",
       } as Response);
@@ -93,7 +93,7 @@ describe("Stripe API", () => {
         url: "/v1/balance_transactions",
       };
 
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => mockTransactions,
       } as Response);
@@ -141,7 +141,7 @@ describe("Stripe API", () => {
         url: "/v1/balance_transactions",
       };
 
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => mockTransactions,
       } as Response);
@@ -199,7 +199,7 @@ describe("Stripe API", () => {
       };
 
       let callCount = 0;
-      const mockFetch = jest.fn().mockImplementation(() => {
+      const mockFetch = jest.fn<any>().mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           return Promise.resolve({
@@ -313,7 +313,7 @@ describe("Stripe API", () => {
         pending: [{ amount: 5000, currency: "eur" }],
       };
 
-      const mockFetch = jest.fn().mockResolvedValue({
+      const mockFetch = jest.fn<any>().mockResolvedValue({
         ok: true,
         json: async () => mockBalance,
       } as Response);

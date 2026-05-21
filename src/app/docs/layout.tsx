@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: "Documentation for Commons Hub Brussels.",
 };
 
-const navItems = [
+type NavItem =
+  | { href: string; label: string; children?: never }
+  | { href?: never; label: string; children: Array<{ href: string; label: string }> };
+
+const navItems: NavItem[] = [
   { href: "/docs", label: "Overview" },
 ];
 

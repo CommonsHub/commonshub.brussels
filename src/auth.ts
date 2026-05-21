@@ -27,12 +27,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.accessToken = account.access_token
         token.refreshToken = account.refresh_token
         token.expiresAt = account.expires_at // Unix timestamp in seconds
+        const expiresAt = account.expires_at
 
         console.log("[Auth] New token stored:", {
           hasAccessToken: !!token.accessToken,
           hasRefreshToken: !!token.refreshToken,
           expiresAt: token.expiresAt,
-          expiresIn: token.expiresAt ? token.expiresAt - Math.floor(Date.now() / 1000) : null,
+          expiresIn: expiresAt ? expiresAt - Math.floor(Date.now() / 1000) : null,
         })
 
         // Fetch user's roles in the guild with role names
@@ -138,7 +139,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.username = token.username as string
         session.user.discriminator = token.discriminator as string
         // Handle avatar being null/undefined
-        session.user.avatar = (token.avatar as string) || undefined
+        session.user.avatar = (token.avatar as string) || ""
         session.user.roles = (token.roles as string[]) || []
         session.user.roleDetails = (token.roleDetails as Array<{ id: string; name: string }>) || []
         session.user.accessToken = token.accessToken as string
