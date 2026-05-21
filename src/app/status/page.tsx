@@ -11,11 +11,12 @@
  * JSON API available at /status.json
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Clock, GitBranch, Server, Timer, Loader2 } from "lucide-react";
+import { Clock, GitBranch, Server, Timer, Loader2, RefreshCw, Terminal } from "lucide-react";
 
 interface StatusData {
   status: string;
@@ -57,10 +58,24 @@ interface StatusData {
   };
 }
 
+interface SyncLogLine {
+  stream: string;
+  text: string;
+  timestamp: number;
+}
+
 export default function StatusPage() {
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncLogs, setSyncLogs] = useState<SyncLogLine[]>([]);
+  const [syncResult, setSyncResult] = useState<{
+    success: boolean;
+    duration: string;
+  } | null>(null);
+  const syncConsoleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/status.json")
@@ -77,6 +92,98 @@ export default function StatusPage() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    fetch("/api/status/admin", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+      .then((data) => setIsAdmin(Boolean(data.isAdmin)))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  useEffect(() => {
+    if (syncConsoleRef.current) {
+      syncConsoleRef.current.scrollTop = syncConsoleRef.current.scrollHeight;
+    }
+  }, [syncLogs]);
+
+  const refreshStatus = useCallback(async () => {
+    const response = await fetch("/status.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to refresh status");
+    setData(await response.json());
+  }, []);
+
+  const runSync = useCallback(async () => {
+    if (syncRunning) return;
+
+    setSyncRunning(true);
+    setSyncLogs([]);
+    setSyncResult(null);
+
+    try {
+      const response = await fetch("/api/status/sync", { method: "POST" });
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch {}
+        throw new Error(message);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.stream === "done") {
+              setSyncResult({
+                success: Boolean(event.success),
+                duration: event.duration || "0s",
+              });
+              if (event.success) {
+                refreshStatus().catch(() => {});
+              }
+            } else {
+              setSyncLogs((prev) => [
+                ...prev,
+                {
+                  stream: event.stream || "stdout",
+                  text: event.text || "",
+                  timestamp: Date.now(),
+                },
+              ]);
+            }
+          } catch {}
+        }
+      }
+    } catch (err: unknown) {
+      setSyncLogs((prev) => [
+        ...prev,
+        {
+          stream: "error",
+          text: err instanceof Error ? err.message : String(err),
+          timestamp: Date.now(),
+        },
+      ]);
+      setSyncResult({ success: false, duration: "0s" });
+    } finally {
+      setSyncRunning(false);
+    }
+  }, [refreshStatus, syncRunning]);
 
   if (loading) {
     return (
@@ -295,6 +402,70 @@ export default function StatusPage() {
                 {data.dataDir.years.length > 0 ? data.dataDir.years.join(", ") : "None"}
               </p>
             </div>
+
+            {isAdmin && (
+              <>
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Admin Data Sync</p>
+                      <p className="text-xs text-muted-foreground">
+                        Runs <code>chb sync</code> with this page&apos;s DATA_DIR and streams the output below.
+                      </p>
+                    </div>
+                    <Button onClick={runSync} disabled={syncRunning}>
+                      {syncRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      {syncRunning ? "Syncing…" : "Run chb sync"}
+                    </Button>
+                  </div>
+
+                  {(syncLogs.length > 0 || syncResult || syncRunning) && (
+                    <div className="rounded-lg border bg-black text-green-100 shadow-inner">
+                      <div className="flex items-center gap-2 border-b border-green-900/60 px-3 py-2 text-xs text-green-300">
+                        <Terminal className="h-4 w-4" />
+                        <span>chb sync terminal</span>
+                      </div>
+                      <div
+                        ref={syncConsoleRef}
+                        className="max-h-80 overflow-y-auto p-3 font-mono text-xs leading-relaxed"
+                      >
+                        {syncLogs.map((line, index) => (
+                          <div
+                            key={`${line.timestamp}-${index}`}
+                            className={
+                              line.stream === "stderr" || line.stream === "error"
+                                ? "text-red-300"
+                                : line.stream === "system"
+                                  ? "text-blue-300"
+                                  : "text-green-100"
+                            }
+                          >
+                            <span className="select-none opacity-60">[{line.stream}] </span>
+                            {line.text}
+                          </div>
+                        ))}
+                        {syncRunning && (
+                          <div className="text-green-300">
+                            <span className="animate-pulse">▌</span>
+                          </div>
+                        )}
+                        {syncResult && (
+                          <div className={syncResult.success ? "text-green-300" : "text-red-300"}>
+                            [{syncResult.success ? "done" : "failed"}] finished in {syncResult.duration}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

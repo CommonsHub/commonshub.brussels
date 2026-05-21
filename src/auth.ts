@@ -2,6 +2,19 @@ import NextAuth from "next-auth"
 import Discord from "next-auth/providers/discord"
 import settings from "@/settings/settings.json"
 
+function normalizeAuthUrlEnv() {
+  const configuredUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL
+  if (!configuredUrl) return
+
+  const trimmed = configuredUrl.trim().replace(/\/$/, "")
+  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+
+  process.env.AUTH_URL = normalized
+  process.env.NEXTAUTH_URL = normalized
+}
+
+normalizeAuthUrlEnv()
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   basePath: "/api/auth",
   trustHost: true,
