@@ -438,30 +438,42 @@ function loadEtherscanHistoricalTransactions(
  */
 function getCurrentMonthLastModified(): number | null {
   try {
-    // First check finance.json which gets updated on each refresh
-    if (fs.existsSync(FINANCE_CACHE_FILE)) {
-      const stats = fs.statSync(FINANCE_CACHE_FILE);
-      return stats.mtimeMs;
-    }
-
-    // Fallback to checking current month folder
-    const currentMonth = getMonthKeyFromDate(new Date());
-    const [year, month] = currentMonth.split("-");
-    const currentMonthDir = path.join(DATA_DIR, year, month);
-
-    if (!fs.existsSync(currentMonthDir)) {
-      return null;
-    }
-
-    const files = fs.readdirSync(currentMonthDir, { withFileTypes: true });
     let latestMtime: number | null = null;
 
-    for (const file of files) {
-      if (file.isFile() && file.name.endsWith(".json")) {
-        const filePath = path.join(currentMonthDir, file.name);
-        const stats = fs.statSync(filePath);
-        if (!latestMtime || stats.mtimeMs > latestMtime) {
-          latestMtime = stats.mtimeMs;
+    const trackMtime = (filePath: string) => {
+      if (!fs.existsSync(filePath)) return;
+      const stats = fs.statSync(filePath);
+      if (!latestMtime || stats.mtimeMs > latestMtime) {
+        latestMtime = stats.mtimeMs;
+      }
+    };
+
+    // First check finance.json from the legacy cache if it exists.
+    if (fs.existsSync(FINANCE_CACHE_FILE)) {
+      trackMtime(FINANCE_CACHE_FILE);
+    }
+
+    if (!fs.existsSync(DATA_DIR)) return latestMtime;
+
+    const yearDirs = fs
+      .readdirSync(DATA_DIR, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory() && /^\d{4}$/.test(dirent.name));
+
+    for (const yearDir of yearDirs) {
+      const yearPath = path.join(DATA_DIR, yearDir.name);
+      const monthDirs = fs
+        .readdirSync(yearPath, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name));
+
+      for (const monthDir of monthDirs) {
+        const generatedDir = path.join(yearPath, monthDir.name, "generated");
+        if (!fs.existsSync(generatedDir)) continue;
+        for (const file of fs.readdirSync(generatedDir, {
+          withFileTypes: true,
+        })) {
+          if (file.isFile() && file.name.endsWith(".json")) {
+            trackMtime(path.join(generatedDir, file.name));
+          }
         }
       }
     }
