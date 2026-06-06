@@ -370,6 +370,93 @@ export function getActiveMembers(messages: CachedMessage[]): {
   };
 }
 
+function readGeneratedActiveMembers(
+  year: string,
+  month: string
+): {
+  count: number;
+  userIds: string[];
+  users: UserInfo[];
+} | null {
+  const contributorsFile = path.join(
+    DATA_DIR,
+    year,
+    month,
+    "generated",
+    "contributors.json"
+  );
+
+  if (!fs.existsSync(contributorsFile)) {
+    return null;
+  }
+
+  try {
+    const data = JSON.parse(fs.readFileSync(contributorsFile, "utf-8")) as {
+      summary?: { totalContributors?: number };
+      contributors?: Array<{
+        id: string;
+        profile?: {
+          username?: string;
+          name?: string;
+          avatar_url?: string | null;
+        };
+      }>;
+      users?: Array<{
+        id: string;
+        username?: string;
+        displayName?: string | null;
+        avatar?: string | null;
+      }>;
+    };
+
+    const contributors = data.contributors ?? [];
+    if (contributors.length > 0) {
+      const users = contributors
+        .filter((contributor) => contributor.id)
+        .map((contributor) => ({
+          id: contributor.id,
+          username: contributor.profile?.username || contributor.id,
+          displayName:
+            contributor.profile?.name ||
+            contributor.profile?.username ||
+            contributor.id,
+          avatar: contributor.profile?.avatar_url || null,
+        }));
+
+      return {
+        count: data.summary?.totalContributors ?? users.length,
+        userIds: users.map((user) => user.id),
+        users,
+      };
+    }
+
+    const legacyUsers = data.users ?? [];
+    if (legacyUsers.length > 0) {
+      const users = legacyUsers
+        .filter((user) => user.id)
+        .map((user) => ({
+          id: user.id,
+          username: user.username || user.id,
+          displayName: user.displayName || user.username || user.id,
+          avatar: user.avatar || null,
+        }));
+
+      return {
+        count: data.summary?.totalContributors ?? users.length,
+        userIds: users.map((user) => user.id),
+        users,
+      };
+    }
+  } catch (error) {
+    console.error(
+      `Error reading generated contributors for ${year}-${month}:`,
+      error
+    );
+  }
+
+  return null;
+}
+
 /**
  * Get popular photos ranked by reaction count
  */
@@ -790,6 +877,52 @@ function calculateTokenActivity(chtTransactions: ConsolidatedTx[]): TokenData {
   };
 }
 
+function readContributorTokenSummary(
+  year: string,
+  month: string
+): Partial<TokenData> | null {
+  const contributorsFile = path.join(
+    DATA_DIR,
+    year,
+    month,
+    "generated",
+    "contributors.json"
+  );
+
+  if (!fs.existsSync(contributorsFile)) {
+    return null;
+  }
+
+  try {
+    const data = JSON.parse(fs.readFileSync(contributorsFile, "utf-8")) as {
+      summary?: {
+        contributorsWithTokens?: number;
+        totalTokensIn?: number;
+        totalTokensOut?: number;
+      };
+    };
+
+    if (!data.summary) {
+      return null;
+    }
+
+    return {
+      minted: data.summary.totalTokensIn ?? 0,
+      burnt: data.summary.totalTokensOut ?? 0,
+      net:
+        (data.summary.totalTokensIn ?? 0) -
+        (data.summary.totalTokensOut ?? 0),
+      activeAccounts: data.summary.contributorsWithTokens ?? 0,
+    };
+  } catch (error) {
+    console.error(
+      `Error reading contributor token summary for ${year}-${month}:`,
+      error
+    );
+    return null;
+  }
+}
+
 /**
  * Calculate financial data for a specific month
  */
@@ -821,7 +954,13 @@ export function calculateMonthlyFinancials(
       tx.chain === chtChain &&
       tx.currency === chtSymbol
   );
-  const tokens = calculateTokenActivity(chtTransactions);
+  const generatedTokenSummary = readContributorTokenSummary(year, month);
+  const calculatedTokens = calculateTokenActivity(chtTransactions);
+  const tokens = {
+    ...calculatedTokens,
+    ...generatedTokenSummary,
+    transactionCount: chtTransactions.length,
+  };
 
   for (const tx of transactions) {
     const account = settings.finance.accounts.find(
@@ -935,7 +1074,8 @@ export function getMonthlyReportData(
   month: string
 ): MonthlyReportData {
   const messages = readDiscordMessages(year, month);
-  const activeMembers = getActiveMembers(messages);
+  const activeMembers =
+    readGeneratedActiveMembers(year, month) ?? getActiveMembers(messages);
   const photos = getPopularPhotos(messages, 12, { relative: true });
   const financials = calculateMonthlyFinancials(year, month);
 

@@ -9,6 +9,8 @@ import {
 } from "@/lib/etherscan";
 import { calculateStripeBalance } from "@/lib/stripe";
 import { DATA_DIR } from "@/lib/data-paths";
+import { isInternalTransfer, txDirection } from "@/lib/transactions";
+import type { Transaction, TransactionsFile } from "@/types/transactions";
 
 interface MonthlyBreakdown {
   month: string;
@@ -570,55 +572,16 @@ function calculateAggregatedMonthlyBreakdown(
   accountsData: AccountData[]
 ): MonthlyBreakdown[] {
   const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
-  const trackedAddresses = getTrackedAddresses();
 
   // Process each account
   accountsData.forEach((accountData) => {
-    if (accountData.provider !== "etherscan" || !accountData.address) {
-      // For non-etherscan accounts (like Stripe), use the monthly breakdown as-is
-      accountData.monthlyBreakdown.forEach((month) => {
-        if (!monthlyMap.has(month.month)) {
-          monthlyMap.set(month.month, { inflow: 0, outflow: 0 });
-        }
-        const monthData = monthlyMap.get(month.month)!;
-        monthData.inflow += month.inflow;
-        monthData.outflow += month.outflow;
-      });
-      return;
-    }
-
-    // For etherscan accounts, reload normalized transactions and filter internal ones
-    const account = settings.finance.accounts.find(
-      (a) => a.slug === accountData.slug
-    );
-    if (!account || account.provider !== "etherscan") return;
-
-    // Load normalized transactions
-    const allTransactions = loadNormalizedTransactions(account.slug);
-
-    // Filter out internal transactions
-    const filteredTransactions = allTransactions.filter((tx) => {
-      const counterparty = tx.counterparty?.toLowerCase();
-      return !counterparty || !trackedAddresses.has(counterparty);
-    });
-
-    // Calculate monthly breakdown with filtered transactions
-    filteredTransactions.forEach((tx: any) => {
-      const date = new Date(tx.timestamp * 1000);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // normalizedAmount is in cents, convert to EUR
-      const value = tx.normalizedAmount / 100;
-
-      if (!monthlyMap.has(monthKey)) {
-        monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
+    accountData.monthlyBreakdown.forEach((month) => {
+      if (!monthlyMap.has(month.month)) {
+        monthlyMap.set(month.month, { inflow: 0, outflow: 0 });
       }
-
-      const monthData = monthlyMap.get(monthKey)!;
-      if (tx.type === "CREDIT") {
-        monthData.inflow += value;
-      } else {
-        monthData.outflow += value;
-      }
+      const monthData = monthlyMap.get(month.month)!;
+      monthData.inflow += month.inflow;
+      monthData.outflow += month.outflow;
     });
   });
 
@@ -637,8 +600,8 @@ function calculateAggregatedMonthlyBreakdown(
  * Load normalized transactions from transactions.json files
  * This reads the generated transactions.json files instead of raw API cache
  */
-function loadNormalizedTransactions(accountSlug: string): any[] {
-  const allTransactions: any[] = [];
+function loadNormalizedTransactions(accountSlug: string): Transaction[] {
+  const allTransactions: Transaction[] = [];
 
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -663,7 +626,12 @@ function loadNormalizedTransactions(accountSlug: string): any[] {
         .sort();
 
       for (const month of monthDirs) {
-        const transactionsPath = path.join(yearPath, month, "transactions.json");
+        const transactionsPath = path.join(
+          yearPath,
+          month,
+          "generated",
+          "transactions.json"
+        );
 
         if (!fs.existsSync(transactionsPath)) {
           continue;
@@ -671,9 +639,9 @@ function loadNormalizedTransactions(accountSlug: string): any[] {
 
         try {
           const content = fs.readFileSync(transactionsPath, "utf-8");
-          const data = JSON.parse(content) as { transactions: any[] };
+          const data = JSON.parse(content) as TransactionsFile;
           const accountTransactions = data.transactions.filter(
-            (tx) => tx.accountSlug === accountSlug && tx.provider === "etherscan"
+            (tx) => tx.accountSlug === accountSlug
           );
           allTransactions.push(...accountTransactions);
         } catch (error) {
@@ -717,7 +685,7 @@ export async function GET(request: Request) {
   try {
     // Fetch all accounts with all transactions (for per-account breakdown)
     const accountsData = await Promise.all(
-      accounts.map((account) => fetchAccountData(account, false))
+      accounts.map((account) => fetchAccountData(account, true))
     );
     // Add lastModified to all accounts
     accountsData.forEach((account) => {
@@ -752,12 +720,6 @@ async function fetchAccountData(
   account: any,
   filterInternal: boolean = false
 ): Promise<AccountData> {
-  if (account.provider === "stripe") {
-    return fetchStripeAccountData(account);
-  }
-
-  // Handle etherscan-based accounts
-  // Load from normalized transactions.json files
   const { address, token } = account;
 
   try {
@@ -769,11 +731,9 @@ async function fetchAccountData(
     // Filter out internal transactions only for overview (monthly breakdown summary)
     // Keep them for individual account views
     if (filterInternal) {
-      const trackedAddresses = getTrackedAddresses();
-      allTransactions = allTransactions.filter((tx) => {
-        const counterparty = tx.counterparty?.toLowerCase();
-        return !counterparty || !trackedAddresses.has(counterparty);
-      });
+      allTransactions = allTransactions.filter(
+        (tx) => !isInternalTransfer(tx) && tx.type !== "TRANSFER"
+      );
     }
 
     // Get balance from finance.json cache
@@ -786,15 +746,17 @@ async function fetchAccountData(
     allTransactions.forEach((tx: any) => {
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // normalizedAmount is in cents, convert to EUR
-      const value = tx.normalizedAmount / 100;
+      const value =
+        tx.provider === "stripe"
+          ? Math.abs(tx.normalizedAmount)
+          : Math.abs(tx.amount);
 
       if (!monthlyMap.has(monthKey)) {
         monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
       }
 
       const monthData = monthlyMap.get(monthKey)!;
-      if (tx.type === "CREDIT") {
+      if (txDirection(tx) === "CREDIT") {
         monthData.inflow += value;
       } else {
         monthData.outflow += value;
@@ -817,13 +779,21 @@ async function fetchAccountData(
     const recentTransactions = allTransactions
       .slice(0, 20)
       .map((tx: any) => ({
-        hash: tx.txHash,
+        hash: tx.providerId || tx.id,
         date: new Date(tx.timestamp * 1000).toISOString(),
-        from: tx.type === "DEBIT" ? address : tx.counterparty,
-        to: tx.type === "CREDIT" ? address : tx.counterparty,
-        // normalizedAmount is in cents, convert to EUR
-        value: Math.round((tx.normalizedAmount / 100) * 100) / 100,
-        type: (tx.type === "CREDIT" ? "in" : "out") as "in" | "out",
+        from: txDirection(tx) === "DEBIT" ? address : undefined,
+        to: txDirection(tx) === "CREDIT" ? address : undefined,
+        value:
+          Math.round(
+            (tx.provider === "stripe"
+              ? Math.abs(tx.normalizedAmount)
+              : Math.abs(tx.amount)) * 100
+          ) / 100,
+        type: (txDirection(tx) === "CREDIT" ? "in" : "out") as "in" | "out",
+        description:
+          typeof tx.metadata?.description === "string"
+            ? tx.metadata.description
+            : tx.type,
       }));
 
     // Calculate totals
@@ -839,7 +809,8 @@ async function fetchAccountData(
       provider: account.provider,
       chain: account.chain,
       address,
-      tokenSymbol: token.symbol,
+      tokenSymbol: token?.symbol || account.currency || "EUR",
+      currency: account.currency,
       balance: Math.round(balance * 100) / 100,
       totalInflow: Math.round(totalInflow * 100) / 100,
       totalOutflow: Math.round(totalOutflow * 100) / 100,
