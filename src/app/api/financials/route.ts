@@ -81,6 +81,10 @@ interface AccountBalanceCache {
   balances?: Record<string, number>;
 }
 
+const CHAIN_RPC_URLS: Record<string, string> = {
+  gnosis: "https://rpc.gnosischain.com",
+};
+
 // In-memory cache for faster access
 const stripeBalanceCache: Map<string, { data: any; lastFetched: number }> =
   new Map();
@@ -726,6 +730,70 @@ function calculateBalanceFromTransactions(transactions: Transaction[]): number {
   }, 0);
 }
 
+function parseTokenBalance(hexValue: string, decimals: number): number | null {
+  try {
+    const raw = BigInt(hexValue);
+    const divisor = 10n ** BigInt(decimals);
+    const whole = raw / divisor;
+    const fraction = raw % divisor;
+    return Number(whole) + Number(fraction) / 10 ** decimals;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchLiveBlockchainAccountBalance(
+  account: any
+): Promise<number | null> {
+  if (account.provider !== "etherscan" || !account.address || !account.token) {
+    return null;
+  }
+
+  const rpcUrl = CHAIN_RPC_URLS[account.chain];
+  if (!rpcUrl) {
+    return null;
+  }
+
+  const addressParam = account.address
+    .toLowerCase()
+    .replace(/^0x/, "")
+    .padStart(64, "0");
+
+  try {
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [
+          {
+            to: account.token.address,
+            data: `0x70a08231${addressParam}`,
+          },
+          "latest",
+        ],
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = (await response.json()) as { result?: string };
+    if (!result.result || !/^0x[0-9a-fA-F]+$/.test(result.result)) {
+      return null;
+    }
+
+    return parseTokenBalance(result.result, account.token.decimals);
+  } catch (error) {
+    console.error(`Error fetching live balance for ${account.slug}:`, error);
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("slug");
@@ -804,10 +872,13 @@ async function fetchAccountData(
       );
     }
 
-    // Get balance from chb's live cache, then legacy finance cache,
-    // then derive it from generated transactions.
+    // Get balance from chain first, then chb's cache, legacy finance cache,
+    // and finally derive it from generated transactions.
+    const liveBalance = await fetchLiveBlockchainAccountBalance(account);
     const cachedBalance =
-      getCachedLiveAccountBalance(account) ?? getCachedAccountBalance(account.slug);
+      liveBalance ??
+      getCachedLiveAccountBalance(account) ??
+      getCachedAccountBalance(account.slug);
     const balance =
       cachedBalance !== null
         ? cachedBalance

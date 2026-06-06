@@ -41,8 +41,8 @@ interface MonthlyBreakdown {
 interface Transaction {
   hash: string;
   date: string;
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
   value: number;
   type: "in" | "out";
 }
@@ -100,6 +100,10 @@ export default function AccountPage() {
 
   const formatAddress = (addr: string) =>
     `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const formatCounterparty = (tx: Transaction) => {
+    const address = tx.type === "in" ? tx.to : tx.from;
+    return address ? formatAddress(address) : "Unknown";
+  };
   const formatMonth = (month: string) => {
     const [year, m] = month.split("-");
     const date = new Date(Number.parseInt(year), Number.parseInt(m) - 1);
@@ -311,9 +315,7 @@ export default function AccountPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="font-mono text-sm">
-                          {tx.type === "in"
-                            ? formatAddress(tx.from)
-                            : formatAddress(tx.to)}
+                          {formatCounterparty(tx)}
                         </TableCell>
                         <TableCell
                           className={`text-right font-medium ${tx.type === "in" ? "text-green-600" : "text-red-600"}`}
