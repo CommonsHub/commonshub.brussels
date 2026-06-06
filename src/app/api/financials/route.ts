@@ -671,6 +671,21 @@ function loadNormalizedTransactions(accountSlug: string): Transaction[] {
   return allTransactions;
 }
 
+function transactionValue(tx: Transaction): number {
+  return tx.provider === "stripe"
+    ? Math.abs(tx.normalizedAmount)
+    : Math.abs(tx.amount);
+}
+
+function calculateBalanceFromTransactions(transactions: Transaction[]): number {
+  return transactions.reduce((balance, tx) => {
+    const signedValue = txDirection(tx) === "CREDIT"
+      ? transactionValue(tx)
+      : -transactionValue(tx);
+    return balance + signedValue;
+  }, 0);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("slug");
@@ -736,9 +751,10 @@ async function fetchAccountData(
 
   try {
     // Load normalized transactions from transactions.json
-    let allTransactions = loadNormalizedTransactions(account.slug).sort(
+    const accountTransactions = loadNormalizedTransactions(account.slug).sort(
       (a, b) => b.timestamp - a.timestamp // Sort by most recent first
     );
+    let allTransactions = accountTransactions;
 
     // Filter out internal transactions only for overview (monthly breakdown summary)
     // Keep them for individual account views
@@ -748,9 +764,12 @@ async function fetchAccountData(
       );
     }
 
-    // Get balance from finance.json cache
+    // Get balance from finance.json cache, or derive it from generated transactions.
     const cachedBalance = getCachedAccountBalance(account.slug);
-    const balance = cachedBalance !== null ? cachedBalance : 0;
+    const balance =
+      cachedBalance !== null
+        ? cachedBalance
+        : calculateBalanceFromTransactions(accountTransactions);
 
     // Calculate monthly breakdown
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
@@ -758,10 +777,7 @@ async function fetchAccountData(
     allTransactions.forEach((tx: any) => {
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const value =
-        tx.provider === "stripe"
-          ? Math.abs(tx.normalizedAmount)
-          : Math.abs(tx.amount);
+      const value = transactionValue(tx);
 
       if (!monthlyMap.has(monthKey)) {
         monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
@@ -796,11 +812,7 @@ async function fetchAccountData(
         from: txDirection(tx) === "DEBIT" ? address : undefined,
         to: txDirection(tx) === "CREDIT" ? address : undefined,
         value:
-          Math.round(
-            (tx.provider === "stripe"
-              ? Math.abs(tx.normalizedAmount)
-              : Math.abs(tx.amount)) * 100
-          ) / 100,
+          Math.round(transactionValue(tx) * 100) / 100,
         type: (txDirection(tx) === "CREDIT" ? "in" : "out") as "in" | "out",
         description:
           typeof tx.metadata?.description === "string"
