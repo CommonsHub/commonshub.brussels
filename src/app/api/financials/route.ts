@@ -60,7 +60,6 @@ const CURRENT_MONTH_CACHE_FILE = path.join(
   "stripe-cache-current-month.json"
 );
 const FINANCE_CACHE_FILE = path.join(DATA_DIR, "finance.json");
-const ACCOUNT_BALANCE_CACHE_FILE = path.join(DATA_DIR, "latest", "balances.json");
 
 interface StripeBalanceCache {
   data: {
@@ -75,15 +74,6 @@ interface StripeCurrentMonthCache {
   lastFetched: number;
   month: string; // YYYY-MM format
 }
-
-interface AccountBalanceCache {
-  fetchedAt?: string;
-  balances?: Record<string, number>;
-}
-
-const CHAIN_RPC_URLS: Record<string, string> = {
-  gnosis: "https://rpc.gnosischain.com",
-};
 
 // In-memory cache for faster access
 const stripeBalanceCache: Map<string, { data: any; lastFetched: number }> =
@@ -520,40 +510,6 @@ function readFinanceCache(): {
 }
 
 /**
- * Get cached live balance for an account from chb's latest/balances.json
- */
-function getCachedLiveAccountBalance(account: any): number | null {
-  try {
-    if (!fs.existsSync(ACCOUNT_BALANCE_CACHE_FILE)) {
-      return null;
-    }
-
-    const fileContent = fs.readFileSync(ACCOUNT_BALANCE_CACHE_FILE, "utf-8");
-    const cache = JSON.parse(fileContent) as AccountBalanceCache;
-    if (!cache.balances) {
-      return null;
-    }
-
-    for (const key of [
-      account.address,
-      account.accountId,
-      account.iban,
-      account.slug,
-    ]) {
-      if (!key) continue;
-      const balance = cache.balances[String(key).toLowerCase()];
-      if (typeof balance === "number") {
-        return balance;
-      }
-    }
-  } catch (error) {
-    console.error("Error reading live account balance cache:", error);
-  }
-
-  return null;
-}
-
-/**
  * Get cached balance for an account from the legacy finance.json
  */
 function getCachedAccountBalance(accountSlug: string): number | null {
@@ -723,75 +679,18 @@ function transactionValue(tx: Transaction): number {
 
 function calculateBalanceFromTransactions(transactions: Transaction[]): number {
   return transactions.reduce((balance, tx) => {
-    const signedValue = txDirection(tx) === "CREDIT"
-      ? transactionValue(tx)
-      : -transactionValue(tx);
-    return balance + signedValue;
+    const amount = tx.normalizedAmount !== 0 ? tx.normalizedAmount : tx.amount;
+    switch (tx.type) {
+      case "CREDIT":
+      case "MINT":
+        return balance + Math.abs(amount);
+      case "DEBIT":
+      case "BURN":
+        return balance - Math.abs(amount);
+      default:
+        return balance;
+    }
   }, 0);
-}
-
-function parseTokenBalance(hexValue: string, decimals: number): number | null {
-  try {
-    const raw = BigInt(hexValue);
-    const divisor = 10n ** BigInt(decimals);
-    const whole = raw / divisor;
-    const fraction = raw % divisor;
-    return Number(whole) + Number(fraction) / 10 ** decimals;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchLiveBlockchainAccountBalance(
-  account: any
-): Promise<number | null> {
-  if (account.provider !== "etherscan" || !account.address || !account.token) {
-    return null;
-  }
-
-  const rpcUrl = CHAIN_RPC_URLS[account.chain];
-  if (!rpcUrl) {
-    return null;
-  }
-
-  const addressParam = account.address
-    .toLowerCase()
-    .replace(/^0x/, "")
-    .padStart(64, "0");
-
-  try {
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "eth_call",
-        params: [
-          {
-            to: account.token.address,
-            data: `0x70a08231${addressParam}`,
-          },
-          "latest",
-        ],
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const result = (await response.json()) as { result?: string };
-    if (!result.result || !/^0x[0-9a-fA-F]+$/.test(result.result)) {
-      return null;
-    }
-
-    return parseTokenBalance(result.result, account.token.decimals);
-  } catch (error) {
-    console.error(`Error fetching live balance for ${account.slug}:`, error);
-    return null;
-  }
 }
 
 export async function GET(request: Request) {
@@ -872,17 +771,9 @@ async function fetchAccountData(
       );
     }
 
-    // Get balance from chain first, then chb's cache, legacy finance cache,
-    // and finally derive it from generated transactions.
-    const liveBalance = await fetchLiveBlockchainAccountBalance(account);
-    const cachedBalance =
-      liveBalance ??
-      getCachedLiveAccountBalance(account) ??
-      getCachedAccountBalance(account.slug);
-    const balance =
-      cachedBalance !== null
-        ? cachedBalance
-        : calculateBalanceFromTransactions(accountTransactions);
+    // Match chb's generated account summary: balance is derived only from
+    // generated transactions, ignoring INTERNAL/TRANSFER rows.
+    const balance = calculateBalanceFromTransactions(accountTransactions);
 
     // Calculate monthly breakdown
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
@@ -975,8 +866,7 @@ async function fetchAccountData(
 async function fetchStripeAccountData(account: any): Promise<AccountData> {
   try {
     // Get balance from finance.json cache
-    const cachedBalance =
-      getCachedLiveAccountBalance(account) ?? getCachedAccountBalance(account.slug);
+    const cachedBalance = getCachedAccountBalance(account.slug);
     const balance = cachedBalance !== null ? cachedBalance : 0;
 
     // Load all transactions from monthly cache files (including current month)
