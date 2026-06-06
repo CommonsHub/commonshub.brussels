@@ -60,6 +60,7 @@ const CURRENT_MONTH_CACHE_FILE = path.join(
   "stripe-cache-current-month.json"
 );
 const FINANCE_CACHE_FILE = path.join(DATA_DIR, "finance.json");
+const ACCOUNT_BALANCE_CACHE_FILE = path.join(DATA_DIR, "latest", "balances.json");
 
 interface StripeBalanceCache {
   data: {
@@ -73,6 +74,11 @@ interface StripeCurrentMonthCache {
   data: any[];
   lastFetched: number;
   month: string; // YYYY-MM format
+}
+
+interface AccountBalanceCache {
+  fetchedAt?: string;
+  balances?: Record<string, number>;
 }
 
 // In-memory cache for faster access
@@ -510,7 +516,41 @@ function readFinanceCache(): {
 }
 
 /**
- * Get cached balance for an account from finance.json
+ * Get cached live balance for an account from chb's latest/balances.json
+ */
+function getCachedLiveAccountBalance(account: any): number | null {
+  try {
+    if (!fs.existsSync(ACCOUNT_BALANCE_CACHE_FILE)) {
+      return null;
+    }
+
+    const fileContent = fs.readFileSync(ACCOUNT_BALANCE_CACHE_FILE, "utf-8");
+    const cache = JSON.parse(fileContent) as AccountBalanceCache;
+    if (!cache.balances) {
+      return null;
+    }
+
+    for (const key of [
+      account.address,
+      account.accountId,
+      account.iban,
+      account.slug,
+    ]) {
+      if (!key) continue;
+      const balance = cache.balances[String(key).toLowerCase()];
+      if (typeof balance === "number") {
+        return balance;
+      }
+    }
+  } catch (error) {
+    console.error("Error reading live account balance cache:", error);
+  }
+
+  return null;
+}
+
+/**
+ * Get cached balance for an account from the legacy finance.json
  */
 function getCachedAccountBalance(accountSlug: string): number | null {
   const financeCache = readFinanceCache();
@@ -764,8 +804,10 @@ async function fetchAccountData(
       );
     }
 
-    // Get balance from finance.json cache, or derive it from generated transactions.
-    const cachedBalance = getCachedAccountBalance(account.slug);
+    // Get balance from chb's live cache, then legacy finance cache,
+    // then derive it from generated transactions.
+    const cachedBalance =
+      getCachedLiveAccountBalance(account) ?? getCachedAccountBalance(account.slug);
     const balance =
       cachedBalance !== null
         ? cachedBalance
@@ -862,7 +904,8 @@ async function fetchAccountData(
 async function fetchStripeAccountData(account: any): Promise<AccountData> {
   try {
     // Get balance from finance.json cache
-    const cachedBalance = getCachedAccountBalance(account.slug);
+    const cachedBalance =
+      getCachedLiveAccountBalance(account) ?? getCachedAccountBalance(account.slug);
     const balance = cachedBalance !== null ? cachedBalance : 0;
 
     // Load all transactions from monthly cache files (including current month)
