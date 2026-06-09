@@ -129,6 +129,7 @@ function getLiveBalance(account: any): number | null {
     if (typeof account.slug === "string") keys.push(account.slug.toLowerCase());
     if (typeof account.accountId === "string")
       keys.push(account.accountId.toLowerCase());
+    if (typeof account.iban === "string") keys.push(account.iban.toLowerCase());
     if (typeof account.address === "string") {
       keys.push(account.address.toLowerCase());
       // chb writes balances under chain-prefixed keys (e.g. "gnosis:0x…").
@@ -295,14 +296,12 @@ function fetchAccountData(
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
 
     allTransactions.forEach((tx: any) => {
-      // Inflow/outflow are external only: transfers between our own accounts
-      // (INTERNAL/TRANSFER) are not income or expense, so they're excluded here.
-      // (They are still counted in the balance, which tracks every movement.)
-      if (isInternalTransfer(tx) || tx.type === "TRANSFER") return;
-
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // Classify by the sign of the balance impact.
+      // Classify by the sign of the balance impact, counting every transaction
+      // (including transfers between accounts). Summed across all of an account's
+      // months this equals the balance change; aggregated across all accounts the
+      // inter-account transfers cancel, so the total Net equals the total balance.
       const signed = tx.normalizedAmount ?? tx.amount ?? 0;
 
       if (!monthlyMap.has(monthKey)) {
@@ -427,10 +426,19 @@ export function getAccountFinancials(slug: string): AccountData | null {
 export function getFinancialsOverview(): FinancialsOverview {
   const lastModified = getCurrentMonthLastModified();
 
-  // Include internal transfers (filterInternal = false) so the aggregated
-  // inflow/outflow and Net reconcile to the change in total balance: Net is then
-  // the sum of every signed transaction, which equals the balance by identity.
-  const accountsData = settings.finance.accounts.map((account) =>
+  // Only active accounts are shown and totalled. Archived accounts (drained or
+  // migrated, ~€0) are hidden so the page isn't overloaded; they're excluded
+  // from the totals too, since their pre-archive history is incomplete and
+  // would otherwise break the reconciliation.
+  const activeAccounts = settings.finance.accounts.filter(
+    (account) => !("archivedAt" in account && (account as any).archivedAt)
+  );
+
+  // Count every transaction (including inter-account transfers) so the
+  // aggregated inflow/outflow and Net reconcile to the change in total balance:
+  // Net is the sum of every signed transaction, which equals the balance by
+  // identity, and inter-account transfers cancel across the set.
+  const accountsData = activeAccounts.map((account) =>
     fetchAccountData(account, false)
   );
   accountsData.forEach((account) => {

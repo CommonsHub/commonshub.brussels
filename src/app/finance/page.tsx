@@ -73,8 +73,9 @@ export default async function FinanceOverviewPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Inflow and outflow are external only — transfers between our own
-                accounts are excluded.
+                Inflow and outflow count every transaction across all active
+                accounts (including transfers between them), so the net equals
+                the change in total balance.
               </p>
             </CardContent>
           </Card>
