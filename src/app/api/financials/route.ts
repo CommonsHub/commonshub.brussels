@@ -677,6 +677,35 @@ function transactionValue(tx: Transaction): number {
     : Math.abs(tx.amount);
 }
 
+/**
+ * Read chb's authoritative live balance for an account from latest/balances.json.
+ * Balances are keyed by slug, Stripe accountId, or on-chain address (all lowercase),
+ * mirroring how src/lib/reports.ts resolves them. Returns null when no live balance
+ * is available so callers can fall back to the transaction-derived value.
+ */
+function getLiveBalance(account: any): number | null {
+  const filePath = path.join(DATA_DIR, "latest", "balances.json");
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+      balances?: Record<string, number>;
+    };
+    const balances = data.balances ?? {};
+    const keys: string[] = [];
+    if (typeof account.slug === "string") keys.push(account.slug.toLowerCase());
+    if (typeof account.accountId === "string")
+      keys.push(account.accountId.toLowerCase());
+    if (typeof account.address === "string")
+      keys.push(account.address.toLowerCase());
+    for (const key of keys) {
+      if (typeof balances[key] === "number") return balances[key];
+    }
+  } catch (error) {
+    console.error("Error reading latest balances.json:", error);
+  }
+  return null;
+}
+
 function calculateBalanceFromTransactions(transactions: Transaction[]): number {
   return transactions.reduce((balance, tx) => {
     const amount = tx.normalizedAmount !== 0 ? tx.normalizedAmount : tx.amount;
@@ -771,9 +800,15 @@ async function fetchAccountData(
       );
     }
 
-    // Match chb's generated account summary: balance is derived only from
-    // generated transactions, ignoring INTERNAL/TRANSFER rows.
-    const balance = calculateBalanceFromTransactions(accountTransactions);
+    // Prefer chb's authoritative live balance (latest/balances.json), which is
+    // what `chb accounts` reports. Fall back to deriving the balance from
+    // generated transactions only when no live balance is available (e.g. the
+    // full transaction history hasn't been backfilled for this account).
+    const liveBalance = getLiveBalance(account);
+    const balance =
+      liveBalance !== null
+        ? liveBalance
+        : calculateBalanceFromTransactions(accountTransactions);
 
     // Calculate monthly breakdown
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
