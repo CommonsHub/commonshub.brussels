@@ -7,17 +7,22 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ArrowDownLeft, ArrowUpRight, Wallet } from "lucide-react";
-import Link from "next/link";
-import { WalletAddress } from "@/components/wallet-address";
 import { getFinancialsOverview } from "@/lib/financials";
 import { MonthlyBreakdownTable } from "./monthly-breakdown-table";
+import { AccountCards } from "./account-cards";
 
 // Data is read from local files at request time; never statically cached.
 export const dynamic = "force-dynamic";
 
 export default async function FinanceOverviewPage() {
-  const { accounts, aggregatedMonthlyBreakdown, totalInflow, totalOutflow, lastModified } =
-    getFinancialsOverview();
+  const {
+    accounts,
+    archivedAccounts,
+    aggregatedMonthlyBreakdown,
+    totalInflow,
+    totalOutflow,
+    lastModified,
+  } = getFinancialsOverview();
 
   // Total balance across all accounts (rounded)
   const totalBalance = Math.round(
@@ -86,55 +91,8 @@ export default async function FinanceOverviewPage() {
             aggregatedMonthlyBreakdown={aggregatedMonthlyBreakdown}
           />
 
-          {/* Account Cards Grid: one column on mobile, two on tablet and up */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {accounts.map((account) => (
-              <Link
-                key={account.slug}
-                href={`/finance/${account.slug}`}
-                className="block h-full"
-              >
-                <Card className="h-full hover:border-primary/50 transition-colors cursor-pointer">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span>{account.name}</span>
-                      {account.address && (
-                        <WalletAddress
-                          address={account.address}
-                          chain={account.chain || "ethereum"}
-                          showLink={false}
-                          showCopy={false}
-                        />
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      {account.provider === "stripe"
-                        ? "Stripe"
-                        : `${account.chain} blockchain`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-3xl font-bold">
-                      {Math.round(account.balance ?? 0).toLocaleString()}{" "}
-                      <span className="text-lg text-muted-foreground">
-                        {account.tokenSymbol}
-                      </span>
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <div className="flex items-center gap-1 text-green-600">
-                        <ArrowDownLeft className="w-4 h-4" />+
-                        {(account.totalInflow ?? 0).toLocaleString()}
-                      </div>
-                      <div className="flex items-center gap-1 text-red-600">
-                        <ArrowUpRight className="w-4 h-4" />-
-                        {(account.totalOutflow ?? 0).toLocaleString()}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
+          {/* Account Cards Grid (active by default; archived behind a toggle) */}
+          <AccountCards active={accounts} archived={archivedAccounts} />
 
           {/* Info Section */}
           <Card>

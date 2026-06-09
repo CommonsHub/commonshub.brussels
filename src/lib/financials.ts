@@ -50,6 +50,8 @@ export interface AccountData {
 
 export interface FinancialsOverview {
   accounts: AccountData[];
+  /** Archived accounts (drained/migrated) — shown only behind a toggle, not totalled. */
+  archivedAccounts: AccountData[];
   aggregatedMonthlyBreakdown: MonthlyBreakdown[];
   totalInflow: number;
   totalOutflow: number;
@@ -445,6 +447,15 @@ export function getFinancialsOverview(): FinancialsOverview {
     account.lastModified = lastModified;
   });
 
+  // Archived accounts: data for display behind the toggle only — not totalled.
+  const archivedAccounts = settings.finance.accounts
+    .filter((account) => "archivedAt" in account && (account as any).archivedAt)
+    .map((account) => {
+      const data = fetchAccountData(account, false);
+      data.lastModified = lastModified;
+      return data;
+    });
+
   const aggregatedMonthlyBreakdown =
     calculateAggregatedMonthlyBreakdown(accountsData);
 
@@ -459,6 +470,7 @@ export function getFinancialsOverview(): FinancialsOverview {
 
   return {
     accounts: accountsData,
+    archivedAccounts,
     aggregatedMonthlyBreakdown,
     totalInflow: Math.round(totalInflow * 100) / 100,
     totalOutflow: Math.round(totalOutflow * 100) / 100,
