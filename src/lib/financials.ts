@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import settings from "@/settings/settings.json";
 import { DATA_DIR } from "@/lib/data-paths";
-import { isInternalTransfer, txDirection } from "@/lib/transactions";
+import { isInternalTransfer } from "@/lib/transactions";
 import type { Transaction, TransactionsFile } from "@/types/transactions";
 
 export interface MonthlyBreakdown {
@@ -141,18 +141,14 @@ function getLiveBalance(account: any): number | null {
 }
 
 function calculateBalanceFromTransactions(transactions: Transaction[]): number {
+  // Sum the signed normalizedAmount of every transaction — including INTERNAL
+  // and TRANSFER rows. Transfers between our own accounts genuinely change this
+  // account's balance, so they must be counted (only the org-wide aggregate
+  // cancels them out). Summing this way reproduces the live on-chain balance to
+  // the cent for any account whose transaction history is complete.
   return transactions.reduce((balance, tx) => {
-    const amount = tx.normalizedAmount !== 0 ? tx.normalizedAmount : tx.amount;
-    switch (tx.type) {
-      case "CREDIT":
-      case "MINT":
-        return balance + Math.abs(amount);
-      case "DEBIT":
-      case "BURN":
-        return balance - Math.abs(amount);
-      default:
-        return balance;
-    }
+    const amount = tx.normalizedAmount ?? tx.amount ?? 0;
+    return balance + amount;
   }, 0);
 }
 
@@ -296,17 +292,20 @@ function fetchAccountData(
     allTransactions.forEach((tx: any) => {
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const value = transactionValue(tx);
+      // Classify by the sign of the balance impact (the same signed amount used
+      // for the balance), so inflow − outflow sums to the balance change and
+      // INTERNAL transfers land on the correct side regardless of tagging.
+      const signed = tx.normalizedAmount ?? tx.amount ?? 0;
 
       if (!monthlyMap.has(monthKey)) {
         monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
       }
 
       const monthData = monthlyMap.get(monthKey)!;
-      if (txDirection(tx) === "CREDIT") {
-        monthData.inflow += value;
+      if (signed >= 0) {
+        monthData.inflow += signed;
       } else {
-        monthData.outflow += value;
+        monthData.outflow += -signed;
       }
     });
 
@@ -326,7 +325,7 @@ function fetchAccountData(
     const recentTransactions: FinanceRecentTransaction[] = allTransactions
       .slice(0, isStripe ? 100 : 20)
       .map((tx: any) => {
-        const direction = txDirection(tx) === "CREDIT" ? "in" : "out";
+        const direction = (tx.normalizedAmount ?? tx.amount ?? 0) >= 0 ? "in" : "out";
         const description =
           typeof tx.metadata?.description === "string"
             ? tx.metadata.description
@@ -354,8 +353,8 @@ function fetchAccountData(
         return {
           hash: tx.providerId || tx.id,
           date: new Date(tx.timestamp * 1000).toISOString(),
-          from: txDirection(tx) === "DEBIT" ? address : undefined,
-          to: txDirection(tx) === "CREDIT" ? address : undefined,
+          from: direction === "out" ? address : undefined,
+          to: direction === "in" ? address : undefined,
           value: Math.round(transactionValue(tx) * 100) / 100,
           type: direction as "in" | "out",
           description,
@@ -420,8 +419,11 @@ export function getAccountFinancials(slug: string): AccountData | null {
 export function getFinancialsOverview(): FinancialsOverview {
   const lastModified = getCurrentMonthLastModified();
 
+  // Include internal transfers (filterInternal = false) so the aggregated
+  // inflow/outflow and Net reconcile to the change in total balance: Net is then
+  // the sum of every signed transaction, which equals the balance by identity.
   const accountsData = settings.finance.accounts.map((account) =>
-    fetchAccountData(account, true)
+    fetchAccountData(account, false)
   );
   accountsData.forEach((account) => {
     account.lastModified = lastModified;

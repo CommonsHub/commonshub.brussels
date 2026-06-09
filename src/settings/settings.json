@@ -77,7 +77,7 @@
         "provider": "etherscan",
         "chain": "gnosis",
         "chainId": 100,
-        "address": "0x6fDF0AaE33E313d9C98D2Aa19Bcd8EF777912CBf",
+        "address": "0xb01cCCE2d75d517EE520De31eAE6aFCa735aadc1",
         "token": {
           "address": "0x420CA0f9B9b604cE0fd9C18EF134C705e5Fa3430",
           "name": "EURe",

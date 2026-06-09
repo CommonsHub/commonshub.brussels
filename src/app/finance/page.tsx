@@ -73,7 +73,8 @@ export default async function FinanceOverviewPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Excludes internal transfers between accounts
+                Inflow and outflow count every transaction, including transfers
+                between accounts, so the net equals the change in total balance.
               </p>
             </CardContent>
           </Card>
@@ -100,6 +101,8 @@ export default async function FinanceOverviewPage() {
                         <WalletAddress
                           address={account.address}
                           chain={account.chain || "ethereum"}
+                          showLink={false}
+                          showCopy={false}
                         />
                       )}
                     </CardTitle>
