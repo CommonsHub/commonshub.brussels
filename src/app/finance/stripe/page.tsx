@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -8,7 +5,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -25,131 +21,66 @@ import {
   Wallet,
   ChevronLeft,
   CreditCard,
-  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+import { getAccountFinancials, type FinanceRecentTransaction } from "@/lib/financials";
 
-interface MonthlyBreakdown {
-  month: string;
-  inflow: number;
-  outflow: number;
-  net: number;
-}
+// Data is read from local files at request time; never statically cached.
+export const dynamic = "force-dynamic";
 
-interface StripeTransaction {
-  hash: string;
-  date: string;
-  description: string;
-  type: string;
-  amount: number;
-  fee: number;
-  net: number;
-  direction: "in" | "out";
-  source: string;
-  reportingCategory: string;
-}
+const formatMonth = (month: string) => {
+  const [year, m] = month.split("-");
+  const date = new Date(Number.parseInt(year), Number.parseInt(m) - 1);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+};
 
-interface StripeAccountData {
-  slug: string;
-  name: string;
-  provider: string;
-  tokenSymbol: string;
-  currency: string;
-  balance: number;
-  totalInflow: number;
-  totalOutflow: number;
-  monthlyBreakdown: MonthlyBreakdown[];
-  recentTransactions: StripeTransaction[];
-  lastModified?: number | null;
-}
-
-export default function StripeAccountPage() {
-  const [data, setData] = useState<StripeAccountData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const loadData = () => {
-    fetch(`/api/financials?slug=stripe`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setData(data);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load financial data");
-        setLoading(false);
-      });
+const getTransactionTypeLabel = (type: string) => {
+  const typeLabels: Record<string, string> = {
+    charge: "Payment",
+    payment: "Payment",
+    payout: "Payout",
+    refund: "Refund",
+    transfer: "Transfer",
+    adjustment: "Adjustment",
+    application_fee: "App Fee",
+    application_fee_refund: "Fee Refund",
+    stripe_fee: "Stripe Fee",
+    network_cost: "Network Cost",
   };
+  return typeLabels[type] || type.replace(/_/g, " ");
+};
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const formatMonth = (month: string) => {
-    const [year, m] = month.split("-");
-    const date = new Date(Number.parseInt(year), Number.parseInt(m) - 1);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    });
-  };
-
-  const getTransactionTypeLabel = (type: string) => {
-    const typeLabels: Record<string, string> = {
-      charge: "Payment",
-      payment: "Payment",
-      payout: "Payout",
-      refund: "Refund",
-      transfer: "Transfer",
-      adjustment: "Adjustment",
-      application_fee: "App Fee",
-      application_fee_refund: "Fee Refund",
-      stripe_fee: "Stripe Fee",
-      network_cost: "Network Cost",
-    };
-    return typeLabels[type] || type.replace(/_/g, " ");
-  };
-
-  const getStripeDashboardUrl = (tx: StripeTransaction) => {
-    // Link to the payment/payout in Stripe dashboard based on source ID
-    if (tx.source?.startsWith("ch_")) {
-      return `https://dashboard.stripe.com/payments/${tx.source}`;
-    }
-    if (tx.source?.startsWith("po_")) {
-      return `https://dashboard.stripe.com/payouts/${tx.source}`;
-    }
-    if (tx.source?.startsWith("re_")) {
-      return `https://dashboard.stripe.com/refunds/${tx.source}`;
-    }
-    if (tx.source?.startsWith("tr_")) {
-      return `https://dashboard.stripe.com/transfers/${tx.source}`;
-    }
-    // Fallback to balance transaction
-    return `https://dashboard.stripe.com/balance/transactions/${tx.hash}`;
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">
-          Loading Stripe data...
-        </div>
-      </div>
-    );
+const getStripeDashboardUrl = (tx: FinanceRecentTransaction) => {
+  // Link to the payment/payout in Stripe dashboard based on source ID
+  if (tx.source?.startsWith("ch_")) {
+    return `https://dashboard.stripe.com/payments/${tx.source}`;
   }
+  if (tx.source?.startsWith("po_")) {
+    return `https://dashboard.stripe.com/payouts/${tx.source}`;
+  }
+  if (tx.source?.startsWith("re_")) {
+    return `https://dashboard.stripe.com/refunds/${tx.source}`;
+  }
+  if (tx.source?.startsWith("tr_")) {
+    return `https://dashboard.stripe.com/transfers/${tx.source}`;
+  }
+  // Fallback to balance transaction
+  return `https://dashboard.stripe.com/balance/transactions/${tx.hash}`;
+};
 
-  if (error || !data) {
+export default async function StripeAccountPage() {
+  const data = getAccountFinancials("stripe");
+
+  if (!data) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription>{error || "Account not found"}</CardDescription>
+            <CardDescription>Account not found</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -343,7 +274,7 @@ export default function StripeAccountPage() {
                                   : "bg-red-100 text-red-800"
                               }
                             >
-                              {getTransactionTypeLabel(tx.type)}
+                              {getTransactionTypeLabel(tx.type ?? "")}
                             </Badge>
                           </TableCell>
                           <TableCell
@@ -353,21 +284,21 @@ export default function StripeAccountPage() {
                             {tx.description || "-"}
                           </TableCell>
                           <TableCell className="text-right whitespace-nowrap">
-                            {tx.amount.toLocaleString(undefined, {
+                            {(tx.amount ?? 0).toLocaleString(undefined, {
                               minimumFractionDigits: 2,
                             })}{" "}
                             {data.tokenSymbol}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground whitespace-nowrap">
-                            {tx.fee > 0
-                              ? `-${tx.fee.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            {(tx.fee ?? 0) > 0
+                              ? `-${(tx.fee ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                               : "-"}
                           </TableCell>
                           <TableCell
                             className={`text-right font-medium whitespace-nowrap ${tx.direction === "in" ? "text-green-600" : "text-red-600"}`}
                           >
                             {tx.direction === "in" ? "+" : ""}
-                            {tx.net.toLocaleString(undefined, {
+                            {(tx.net ?? 0).toLocaleString(undefined, {
                               minimumFractionDigits: 2,
                             })}{" "}
                             {data.tokenSymbol}
@@ -420,7 +351,7 @@ export default function StripeAccountPage() {
             </CardContent>
           </Card>
 
-          {/* Last Modified & Refresh */}
+          {/* Last Modified */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">

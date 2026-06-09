@@ -68,23 +68,18 @@ describe("Financials API - Stripe Transactions", () => {
     expect(foundFiles).toBeGreaterThan(0);
   });
 
-  it("should load Stripe transactions via the API route", async () => {
+  it("should load Stripe transactions via the financials lib", async () => {
     if (!hasStripeData()) {
       console.log("⚠️ Skipping: no Stripe data files found in", getDataDir());
       return;
     }
 
-    // Import the route handler
-    const { GET } = await import("@/app/api/financials/route");
+    // Load the account financials directly from the server lib
+    const { getAccountFinancials } = await import("@/lib/financials");
 
-    // Mock the request
-    const request = new Request("http://localhost:3000/api/financials?slug=stripe");
-
-    // Call the API
-    const response = await GET(request);
-    expect(response.status).toBe(200);
-
-    const data = await response.json();
+    const data = getAccountFinancials("stripe");
+    expect(data).not.toBeNull();
+    if (!data) return;
 
     // Verify response structure
     expect(data).toHaveProperty("slug", "stripe");
@@ -124,10 +119,10 @@ describe("Financials API - Stripe Transactions", () => {
       return;
     }
 
-    const { GET } = await import("@/app/api/financials/route");
-    const request = new Request("http://localhost:3000/api/financials?slug=stripe");
-    const response = await GET(request);
-    const data = await response.json();
+    const { getAccountFinancials } = await import("@/lib/financials");
+    const data = getAccountFinancials("stripe");
+    expect(data).not.toBeNull();
+    if (!data) return;
 
     // Should have some transactions
     expect(data.recentTransactions.length).toBeGreaterThan(0);

@@ -1,7 +1,4 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -9,7 +6,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -25,111 +21,52 @@ import {
   ExternalLink,
   Wallet,
   ChevronLeft,
-  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { WalletAddress } from "@/components/wallet-address";
 import settings from "@/settings/settings.json";
+import { getAccountFinancials, type FinanceRecentTransaction } from "@/lib/financials";
 
-interface MonthlyBreakdown {
-  month: string;
-  inflow: number;
-  outflow: number;
-  net: number;
-}
+// Data is read from local files at request time; never statically cached.
+export const dynamic = "force-dynamic";
 
-interface Transaction {
-  hash: string;
-  date: string;
-  from?: string;
-  to?: string;
-  value: number;
-  type: "in" | "out";
-}
+const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
-interface AccountData {
-  slug: string;
-  name: string;
-  provider: string;
-  chain?: string;
-  address?: string;
-  tokenSymbol: string;
-  balance: number;
-  totalInflow: number;
-  totalOutflow: number;
-  monthlyBreakdown: MonthlyBreakdown[];
-  recentTransactions: Transaction[];
-  lastModified?: number | null;
-}
+const formatCounterparty = (tx: FinanceRecentTransaction) => {
+  const address = tx.type === "in" ? tx.to : tx.from;
+  return address ? formatAddress(address) : "Unknown";
+};
 
-export default function AccountPage() {
-  const params = useParams();
-  const slug = params.slug as string;
-  const [data, setData] = useState<AccountData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+const formatMonth = (month: string) => {
+  const [year, m] = month.split("-");
+  const date = new Date(Number.parseInt(year), Number.parseInt(m) - 1);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+};
+
+export default async function AccountPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
 
   if (slug === "stripe") {
     redirect("/finance/stripe");
   }
 
-  // Get account config from settings
   const accountConfig = settings.finance.accounts.find((a) => a.slug === slug);
+  const data = getAccountFinancials(slug);
 
-  const loadData = () => {
-    fetch(`/api/financials?slug=${slug}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setData(data);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load financial data");
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    loadData();
-  }, [slug]);
-
-  const formatAddress = (addr: string) =>
-    `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  const formatCounterparty = (tx: Transaction) => {
-    const address = tx.type === "in" ? tx.to : tx.from;
-    return address ? formatAddress(address) : "Unknown";
-  };
-  const formatMonth = (month: string) => {
-    const [year, m] = month.split("-");
-    const date = new Date(Number.parseInt(year), Number.parseInt(m) - 1);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">
-          Loading financial data...
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="max-w-md">
           <CardHeader>
             <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription>{error || "Account not found"}</CardDescription>
+            <CardDescription>Account not found</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -321,7 +258,7 @@ export default function AccountPage() {
                           className={`text-right font-medium ${tx.type === "in" ? "text-green-600" : "text-red-600"}`}
                         >
                           {tx.type === "in" ? "+" : "-"}
-                          {tx.value.toLocaleString()} {data.tokenSymbol}
+                          {(tx.value ?? 0).toLocaleString()} {data.tokenSymbol}
                         </TableCell>
                         <TableCell>
                           <Link
@@ -377,7 +314,7 @@ export default function AccountPage() {
             </Card>
           )}
 
-          {/* Last Modified & Refresh */}
+          {/* Last Modified */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
