@@ -9,6 +9,8 @@ import {
 } from "@/lib/etherscan";
 import { calculateStripeBalance } from "@/lib/stripe";
 import { DATA_DIR } from "@/lib/data-paths";
+import { isInternalTransfer, txDirection } from "@/lib/transactions";
+import type { Transaction, TransactionsFile } from "@/types/transactions";
 
 interface MonthlyBreakdown {
   month: string;
@@ -436,30 +438,42 @@ function loadEtherscanHistoricalTransactions(
  */
 function getCurrentMonthLastModified(): number | null {
   try {
-    // First check finance.json which gets updated on each refresh
-    if (fs.existsSync(FINANCE_CACHE_FILE)) {
-      const stats = fs.statSync(FINANCE_CACHE_FILE);
-      return stats.mtimeMs;
-    }
-
-    // Fallback to checking current month folder
-    const currentMonth = getMonthKeyFromDate(new Date());
-    const [year, month] = currentMonth.split("-");
-    const currentMonthDir = path.join(DATA_DIR, year, month);
-
-    if (!fs.existsSync(currentMonthDir)) {
-      return null;
-    }
-
-    const files = fs.readdirSync(currentMonthDir, { withFileTypes: true });
     let latestMtime: number | null = null;
 
-    for (const file of files) {
-      if (file.isFile() && file.name.endsWith(".json")) {
-        const filePath = path.join(currentMonthDir, file.name);
-        const stats = fs.statSync(filePath);
-        if (!latestMtime || stats.mtimeMs > latestMtime) {
-          latestMtime = stats.mtimeMs;
+    const trackMtime = (filePath: string) => {
+      if (!fs.existsSync(filePath)) return;
+      const stats = fs.statSync(filePath);
+      if (!latestMtime || stats.mtimeMs > latestMtime) {
+        latestMtime = stats.mtimeMs;
+      }
+    };
+
+    // First check finance.json from the legacy cache if it exists.
+    if (fs.existsSync(FINANCE_CACHE_FILE)) {
+      trackMtime(FINANCE_CACHE_FILE);
+    }
+
+    if (!fs.existsSync(DATA_DIR)) return latestMtime;
+
+    const yearDirs = fs
+      .readdirSync(DATA_DIR, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory() && /^\d{4}$/.test(dirent.name));
+
+    for (const yearDir of yearDirs) {
+      const yearPath = path.join(DATA_DIR, yearDir.name);
+      const monthDirs = fs
+        .readdirSync(yearPath, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name));
+
+      for (const monthDir of monthDirs) {
+        const generatedDir = path.join(yearPath, monthDir.name, "generated");
+        if (!fs.existsSync(generatedDir)) continue;
+        for (const file of fs.readdirSync(generatedDir, {
+          withFileTypes: true,
+        })) {
+          if (file.isFile() && file.name.endsWith(".json")) {
+            trackMtime(path.join(generatedDir, file.name));
+          }
         }
       }
     }
@@ -496,7 +510,7 @@ function readFinanceCache(): {
 }
 
 /**
- * Get cached balance for an account from finance.json
+ * Get cached balance for an account from the legacy finance.json
  */
 function getCachedAccountBalance(accountSlug: string): number | null {
   const financeCache = readFinanceCache();
@@ -570,55 +584,16 @@ function calculateAggregatedMonthlyBreakdown(
   accountsData: AccountData[]
 ): MonthlyBreakdown[] {
   const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
-  const trackedAddresses = getTrackedAddresses();
 
   // Process each account
   accountsData.forEach((accountData) => {
-    if (accountData.provider !== "etherscan" || !accountData.address) {
-      // For non-etherscan accounts (like Stripe), use the monthly breakdown as-is
-      accountData.monthlyBreakdown.forEach((month) => {
-        if (!monthlyMap.has(month.month)) {
-          monthlyMap.set(month.month, { inflow: 0, outflow: 0 });
-        }
-        const monthData = monthlyMap.get(month.month)!;
-        monthData.inflow += month.inflow;
-        monthData.outflow += month.outflow;
-      });
-      return;
-    }
-
-    // For etherscan accounts, reload normalized transactions and filter internal ones
-    const account = settings.finance.accounts.find(
-      (a) => a.slug === accountData.slug
-    );
-    if (!account || account.provider !== "etherscan") return;
-
-    // Load normalized transactions
-    const allTransactions = loadNormalizedTransactions(account.slug);
-
-    // Filter out internal transactions
-    const filteredTransactions = allTransactions.filter((tx) => {
-      const counterparty = tx.counterparty?.toLowerCase();
-      return !counterparty || !trackedAddresses.has(counterparty);
-    });
-
-    // Calculate monthly breakdown with filtered transactions
-    filteredTransactions.forEach((tx: any) => {
-      const date = new Date(tx.timestamp * 1000);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // normalizedAmount is in cents, convert to EUR
-      const value = tx.normalizedAmount / 100;
-
-      if (!monthlyMap.has(monthKey)) {
-        monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
+    accountData.monthlyBreakdown.forEach((month) => {
+      if (!monthlyMap.has(month.month)) {
+        monthlyMap.set(month.month, { inflow: 0, outflow: 0 });
       }
-
-      const monthData = monthlyMap.get(monthKey)!;
-      if (tx.type === "CREDIT") {
-        monthData.inflow += value;
-      } else {
-        monthData.outflow += value;
-      }
+      const monthData = monthlyMap.get(month.month)!;
+      monthData.inflow += month.inflow;
+      monthData.outflow += month.outflow;
     });
   });
 
@@ -637,8 +612,8 @@ function calculateAggregatedMonthlyBreakdown(
  * Load normalized transactions from transactions.json files
  * This reads the generated transactions.json files instead of raw API cache
  */
-function loadNormalizedTransactions(accountSlug: string): any[] {
-  const allTransactions: any[] = [];
+function loadNormalizedTransactions(accountSlug: string): Transaction[] {
+  const allTransactions: Transaction[] = [];
 
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -663,7 +638,12 @@ function loadNormalizedTransactions(accountSlug: string): any[] {
         .sort();
 
       for (const month of monthDirs) {
-        const transactionsPath = path.join(yearPath, month, "transactions.json");
+        const transactionsPath = path.join(
+          yearPath,
+          month,
+          "generated",
+          "transactions.json"
+        );
 
         if (!fs.existsSync(transactionsPath)) {
           continue;
@@ -671,9 +651,9 @@ function loadNormalizedTransactions(accountSlug: string): any[] {
 
         try {
           const content = fs.readFileSync(transactionsPath, "utf-8");
-          const data = JSON.parse(content) as { transactions: any[] };
+          const data = JSON.parse(content) as TransactionsFile;
           const accountTransactions = data.transactions.filter(
-            (tx) => tx.accountSlug === accountSlug && tx.provider === "etherscan"
+            (tx) => tx.accountSlug === accountSlug
           );
           allTransactions.push(...accountTransactions);
         } catch (error) {
@@ -689,6 +669,28 @@ function loadNormalizedTransactions(accountSlug: string): any[] {
   }
 
   return allTransactions;
+}
+
+function transactionValue(tx: Transaction): number {
+  return tx.provider === "stripe"
+    ? Math.abs(tx.normalizedAmount)
+    : Math.abs(tx.amount);
+}
+
+function calculateBalanceFromTransactions(transactions: Transaction[]): number {
+  return transactions.reduce((balance, tx) => {
+    const amount = tx.normalizedAmount !== 0 ? tx.normalizedAmount : tx.amount;
+    switch (tx.type) {
+      case "CREDIT":
+      case "MINT":
+        return balance + Math.abs(amount);
+      case "DEBIT":
+      case "BURN":
+        return balance - Math.abs(amount);
+      default:
+        return balance;
+    }
+  }, 0);
 }
 
 export async function GET(request: Request) {
@@ -717,7 +719,7 @@ export async function GET(request: Request) {
   try {
     // Fetch all accounts with all transactions (for per-account breakdown)
     const accountsData = await Promise.all(
-      accounts.map((account) => fetchAccountData(account, false))
+      accounts.map((account) => fetchAccountData(account, true))
     );
     // Add lastModified to all accounts
     accountsData.forEach((account) => {
@@ -752,33 +754,26 @@ async function fetchAccountData(
   account: any,
   filterInternal: boolean = false
 ): Promise<AccountData> {
-  if (account.provider === "stripe") {
-    return fetchStripeAccountData(account);
-  }
-
-  // Handle etherscan-based accounts
-  // Load from normalized transactions.json files
   const { address, token } = account;
 
   try {
     // Load normalized transactions from transactions.json
-    let allTransactions = loadNormalizedTransactions(account.slug).sort(
+    const accountTransactions = loadNormalizedTransactions(account.slug).sort(
       (a, b) => b.timestamp - a.timestamp // Sort by most recent first
     );
+    let allTransactions = accountTransactions;
 
     // Filter out internal transactions only for overview (monthly breakdown summary)
     // Keep them for individual account views
     if (filterInternal) {
-      const trackedAddresses = getTrackedAddresses();
-      allTransactions = allTransactions.filter((tx) => {
-        const counterparty = tx.counterparty?.toLowerCase();
-        return !counterparty || !trackedAddresses.has(counterparty);
-      });
+      allTransactions = allTransactions.filter(
+        (tx) => !isInternalTransfer(tx) && tx.type !== "TRANSFER"
+      );
     }
 
-    // Get balance from finance.json cache
-    const cachedBalance = getCachedAccountBalance(account.slug);
-    const balance = cachedBalance !== null ? cachedBalance : 0;
+    // Match chb's generated account summary: balance is derived only from
+    // generated transactions, ignoring INTERNAL/TRANSFER rows.
+    const balance = calculateBalanceFromTransactions(accountTransactions);
 
     // Calculate monthly breakdown
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
@@ -786,15 +781,14 @@ async function fetchAccountData(
     allTransactions.forEach((tx: any) => {
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // normalizedAmount is in cents, convert to EUR
-      const value = tx.normalizedAmount / 100;
+      const value = transactionValue(tx);
 
       if (!monthlyMap.has(monthKey)) {
         monthlyMap.set(monthKey, { inflow: 0, outflow: 0 });
       }
 
       const monthData = monthlyMap.get(monthKey)!;
-      if (tx.type === "CREDIT") {
+      if (txDirection(tx) === "CREDIT") {
         monthData.inflow += value;
       } else {
         monthData.outflow += value;
@@ -817,13 +811,17 @@ async function fetchAccountData(
     const recentTransactions = allTransactions
       .slice(0, 20)
       .map((tx: any) => ({
-        hash: tx.txHash,
+        hash: tx.providerId || tx.id,
         date: new Date(tx.timestamp * 1000).toISOString(),
-        from: tx.type === "DEBIT" ? address : tx.counterparty,
-        to: tx.type === "CREDIT" ? address : tx.counterparty,
-        // normalizedAmount is in cents, convert to EUR
-        value: Math.round((tx.normalizedAmount / 100) * 100) / 100,
-        type: (tx.type === "CREDIT" ? "in" : "out") as "in" | "out",
+        from: txDirection(tx) === "DEBIT" ? address : undefined,
+        to: txDirection(tx) === "CREDIT" ? address : undefined,
+        value:
+          Math.round(transactionValue(tx) * 100) / 100,
+        type: (txDirection(tx) === "CREDIT" ? "in" : "out") as "in" | "out",
+        description:
+          typeof tx.metadata?.description === "string"
+            ? tx.metadata.description
+            : tx.type,
       }));
 
     // Calculate totals
@@ -839,7 +837,8 @@ async function fetchAccountData(
       provider: account.provider,
       chain: account.chain,
       address,
-      tokenSymbol: token.symbol,
+      tokenSymbol: token?.symbol || account.currency || "EUR",
+      currency: account.currency,
       balance: Math.round(balance * 100) / 100,
       totalInflow: Math.round(totalInflow * 100) / 100,
       totalOutflow: Math.round(totalOutflow * 100) / 100,

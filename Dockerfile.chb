@@ -41,5 +41,6 @@ ENV APP_DATA_DIR=/app-data
 
 USER chb
 
-# Keep the worker container alive so schedulers such as Coolify can exec `chb sync`.
-CMD ["sleep", "infinity"]
+# Refresh data on every deployment, then keep the worker alive so schedulers
+# or operators can exec more `chb` commands against the shared data volume.
+CMD ["sh", "-c", "chb sync && chb generate && sleep infinity"]
