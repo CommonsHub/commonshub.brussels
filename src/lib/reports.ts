@@ -16,6 +16,7 @@ import {
   tagValue,
   txDirection,
   isInternalTransfer,
+  type Direction,
 } from "./transactions";
 import { addressFromUri } from "./nip73";
 
@@ -51,11 +52,27 @@ export interface TokenData {
   activeAccounts: number;
 }
 
+export interface BreakdownRow {
+  key: string;
+  label: string;
+  income: number;
+  expenses: number;
+  net: number;
+}
+
+export interface BalanceData {
+  opening: number | null;
+  closing: number | null;
+}
+
 export interface FinancialData {
   income: number;
   expenses: number;
   net: number;
   tokens: TokenData;
+  balance: BalanceData;
+  byCategory: BreakdownRow[];
+  byCollective: BreakdownRow[];
   byAccount: Array<{
     slug: string;
     name: string;
@@ -92,6 +109,10 @@ export interface YearlyReportData {
     net: number;
     totalTokensMinted: number;
     totalTokensBurnt: number;
+    balance: BalanceData;
+    byCategory: BreakdownRow[];
+    byCollective: BreakdownRow[];
+    byAccount: BreakdownRow[];
     monthlyBreakdown: Array<{
       month: string;
       income: number;
@@ -215,7 +236,7 @@ export function readYearlyImages(year: string): PopularPhoto[] {
       proxyUrl: img.proxyUrl,
       id: img.id,
       author: img.author,
-      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
+      reactions: (img.reactions || []).map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
       totalReactions: img.totalReactions,
       message: img.message,
       timestamp: img.timestamp,
@@ -267,7 +288,7 @@ export function readGeneratedImages(year: string, month: string): PopularPhoto[]
       proxyUrl: img.proxyUrl,
       id: img.id,
       author: img.author,
-      reactions: img.reactions.map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
+      reactions: (img.reactions || []).map((r) => ({ emoji: r.emoji, count: r.count, me: r.me ?? false })),
       totalReactions: img.totalReactions,
       message: img.message,
       timestamp: img.timestamp,
@@ -747,22 +768,289 @@ export function filterVisiblePhotos(
 
 // ========== Financial Data Functions ==========
 
+function legacyTokenWideAddresses(tx: ConsolidatedTx): { from?: string; to?: string } | null {
+  const legacy = tx as ConsolidatedTx & {
+    account?: string | null;
+    counterparty?: string | null;
+    txHash?: string | null;
+  };
+  if (tx.provider !== "etherscan" || tx.accountId || tx.counterpartyId) return null;
+  if (!tx.chain || tx.accountSlug !== tx.chain) return null;
+
+  const tokenContract = normaliseAddress(legacy.account);
+  const counterparty = normaliseAddress(legacy.counterparty);
+  if (!tokenContract || !counterparty) return null;
+  const isKnownFinanceAccount = settings.finance.accounts.some((account) =>
+    "address" in account && typeof account.address === "string" && account.address.toLowerCase() === tokenContract
+  );
+  if (isKnownFinanceAccount) return null;
+
+  // Legacy generated token-wide rows stored the token contract in `account`
+  // and the non-contract side in `counterparty`. For zero-address rows that
+  // means: counterparty=0x0 is a mint; otherwise it is a burn from the
+  // counterparty to 0x0. New CHB output carries accountId/counterpartyId and
+  // MINT/BURN types, so this is only a compatibility shim for old /data.
+  if (counterparty === ZERO_ADDRESS.toLowerCase()) {
+    return { from: ZERO_ADDRESS.toLowerCase(), to: tokenContract };
+  }
+  return { from: counterparty, to: ZERO_ADDRESS.toLowerCase() };
+}
+
 function txFromAddress(tx: ConsolidatedTx): string | undefined {
   const tagged = tagValue(tx, "from");
   if (tagged) return tagged.toLowerCase();
+  const legacy = legacyTokenWideAddresses(tx);
+  if (legacy) return legacy.from;
+  if (tx.type === "MINT") return ZERO_ADDRESS.toLowerCase();
+  const accountAddr = txAccountAddress(tx);
+  if (tx.type === "BURN") return accountAddr;
   const dir = txDirection(tx);
-  const accountAddr = addressFromUri(tx.accountId);
-  const cpAddr = addressFromUri(tx.counterpartyId);
+  const cpAddr = txCounterpartyAddress(tx);
   return (dir === "CREDIT" ? cpAddr : accountAddr) ?? undefined;
 }
 
 function txToAddress(tx: ConsolidatedTx): string | undefined {
   const tagged = tagValue(tx, "to");
   if (tagged) return tagged.toLowerCase();
+  const legacy = legacyTokenWideAddresses(tx);
+  if (legacy) return legacy.to;
+  const accountAddr = txAccountAddress(tx);
+  if (tx.type === "MINT") return accountAddr;
+  if (tx.type === "BURN") return ZERO_ADDRESS.toLowerCase();
   const dir = txDirection(tx);
-  const accountAddr = addressFromUri(tx.accountId);
-  const cpAddr = addressFromUri(tx.counterpartyId);
+  const cpAddr = txCounterpartyAddress(tx);
   return (dir === "CREDIT" ? accountAddr : cpAddr) ?? undefined;
+}
+
+function normaliseAddress(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const fromUri = addressFromUri(value);
+  const address = fromUri || value;
+  return /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : undefined;
+}
+
+function txAccountAddress(tx: ConsolidatedTx): string | undefined {
+  const legacy = tx as ConsolidatedTx & { account?: string | null };
+  return normaliseAddress(tx.accountId) ?? normaliseAddress(legacy.account);
+}
+
+function txCounterpartyAddress(tx: ConsolidatedTx): string | undefined {
+  const legacy = tx as ConsolidatedTx & { counterparty?: string | null };
+  return normaliseAddress(tx.counterpartyId) ?? normaliseAddress(legacy.counterparty);
+}
+
+type FinanceAccount = (typeof settings.finance.accounts)[number];
+
+function txFinanceAccount(tx: ConsolidatedTx): FinanceAccount | undefined {
+  const legacy = tx as ConsolidatedTx & { account?: string | null };
+  const ids = [tx.accountSlug, tx.accountId, legacy.account]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .map((v) => v.toLowerCase());
+  const accountAddress = txAccountAddress(tx);
+
+  return settings.finance.accounts.find((account) => {
+    if (ids.includes(account.slug.toLowerCase())) return true;
+    if ("accountId" in account && typeof account.accountId === "string") {
+      if (ids.includes(account.accountId.toLowerCase())) return true;
+    }
+    if ("address" in account && typeof account.address === "string") {
+      if (accountAddress === account.address.toLowerCase()) return true;
+    }
+    return false;
+  });
+}
+
+function txMetadata(tx: ConsolidatedTx): NonNullable<ConsolidatedTx["metadata"]> {
+  return (tx.metadata ?? {}) as NonNullable<ConsolidatedTx["metadata"]>;
+}
+
+function collectiveLabel(key: string): string {
+  const collectives = settings.finance.collectives as Record<string, { name?: string }>;
+  return collectives[key]?.name || key;
+}
+
+const MAIN_CATEGORY_LABELS: Record<string, string> = {
+  rental: "Rentals",
+  membership: "Memberships",
+  donation: "Donations",
+  ticket: "Tickets & events",
+  coworking: "Coworking",
+  service: "Services",
+  catering: "Catering",
+  rent: "Rent",
+  consulting: "Consulting",
+  tax: "Taxes",
+  fee: "Fees",
+  food_drinks: "Food & drinks",
+  utilities: "Utilities",
+  insurance: "Insurance",
+  equipment: "Equipment",
+  furniture: "Furniture",
+  consumable: "Consumables",
+  refund: "Refunds",
+  uncategorized_bank_payment: "Uncategorized bank payments",
+  other_income: "Other income",
+  other_expense: "Other expenses",
+};
+
+function isStripePayout(tx: ConsolidatedTx): boolean {
+  const metadata = txMetadata(tx);
+  return tx.provider === "stripe" && String(metadata.category || "").toLowerCase() === "payout";
+}
+
+function isUnmemoedMoneriumBurn(tx: ConsolidatedTx, direction: Direction): boolean {
+  if (direction !== "DEBIT" || tx.provider !== "etherscan" || tx.currency !== "EURe") return false;
+  const metadata = txMetadata(tx);
+  if (metadata.category || metadata.description || metadata.collective) return false;
+  return txToAddress(tx) === ZERO_ADDRESS.toLowerCase();
+}
+
+function knownBankPaymentCategory(tx: ConsolidatedTx, direction: Direction): { key: string; label: string } | null {
+  if (!isUnmemoedMoneriumBurn(tx, direction)) return null;
+
+  // Monerium redemptions to IBANs are represented on-chain as burns to 0x0.
+  // If CHB generate applied a semantic rule, metadata.category/collective will
+  // be present and is handled by mainCategoryFor below. Rows that still have no
+  // generated semantic metadata remain visible as uncategorized bank payments
+  // instead of being hidden in a generic "other" bucket.
+  return { key: "uncategorized_bank_payment", label: MAIN_CATEGORY_LABELS.uncategorized_bank_payment };
+}
+
+function mainCategoryFor(tx: ConsolidatedTx, direction: Direction): { key: string; label: string } {
+  const knownBankPayment = knownBankPaymentCategory(tx, direction);
+  if (knownBankPayment) return knownBankPayment;
+
+  const metadata = txMetadata(tx);
+  const rawCategory = String(metadata.category || "other").toLowerCase();
+  const description = String(metadata.description || tx.counterpartyId || "").toLowerCase();
+  const text = `${rawCategory} ${description}`;
+  const account = txFinanceAccount(tx);
+  const hasSemanticMetadata = Boolean(metadata.category || metadata.description || metadata.collective);
+
+  let key: string | undefined;
+  if (/member|membership|subscription|shifter/.test(text)) key = "membership";
+  else if (/rental|rentals|room rental|space rental|venue|booking|chb\/\d{4}\//.test(text)) key = "rental";
+  else if (/donation|financial contribution|contribution/.test(text)) key = "donation";
+  else if (/ticket|tickets|luma|event|workshop|gathering|conference/.test(text)) key = "ticket";
+  else if (/cowork/.test(text)) key = "coworking";
+  else if (/service|sponsorship/.test(text) && direction === "CREDIT") key = "service";
+  else if (/top[ -]?up|cater|food|drink|lunch|dinner|restaurant|bakery|colruyt|delhaize|bio-planet/.test(text)) key = direction === "CREDIT" ? "food_drinks" : "catering";
+  else if (/wolugo|office rent|lease|landlord|loyer|\brent\b/.test(text) && direction === "DEBIT") key = "rent";
+  else if (/consult|freelance|contractor/.test(text)) key = "consulting";
+  else if (/tax|vat|automatic tax|imp[oô]t|précompte/.test(text)) key = "tax";
+  else if (/fee|stripe|billing|usage fee|bank fee/.test(text)) key = "fee";
+  else if (/utilit|energy|electric|water|internet|telecom|proximus|engie/.test(text)) key = "utilities";
+  else if (/insurance|assur/.test(text)) key = "insurance";
+  else if (/furniture|ikea|chair|desk|table|sofa|shelf|shelving/.test(text)) key = "furniture";
+  else if (/equipment|hardware|computer|screen|monitor|cable|tool/.test(text)) key = "equipment";
+  else if (/refund/.test(text)) key = "refund";
+  else if (direction === "CREDIT" && account && ["fridge", "coffee"].includes(account.slug)) key = "food_drinks";
+  else if (direction === "DEBIT" && account && ["fridge", "coffee"].includes(account.slug)) key = "catering";
+  else if (direction === "CREDIT" && tx.provider === "stripe" && rawCategory === "charge") key = "ticket";
+  else if (direction === "CREDIT" && tx.provider === "etherscan" && tx.currency === "EURe" && !hasSemanticMetadata) {
+    // Legacy Monerium/EURe bank credits do not carry invoice memos in the
+    // generated transaction rows. In practice these are the invoiced room/event
+    // rental payments; membership/donation/coworking income is tagged by Stripe
+    // descriptions above. Keep this website-side compatibility layer until the
+    // generated data contains semantic bank-transfer metadata.
+    key = "rental";
+  }
+  else if (MAIN_CATEGORY_LABELS[rawCategory]) key = rawCategory;
+  else key = direction === "CREDIT" ? "other_income" : "other_expense";
+
+  return { key, label: MAIN_CATEGORY_LABELS[key] || key };
+}
+
+function addBreakdown(
+  map: Map<string, BreakdownRow>,
+  key: string,
+  label: string,
+  direction: Direction,
+  value: number
+) {
+  const existing = map.get(key) ?? { key, label, income: 0, expenses: 0, net: 0 };
+  if (direction === "CREDIT") existing.income += value;
+  else existing.expenses += value;
+  existing.net = existing.income - existing.expenses;
+  map.set(key, existing);
+}
+
+function sortedBreakdown<T extends BreakdownRow>(map: Map<string, T>): T[] {
+  return Array.from(map.values()).sort(
+    (a, b) => Math.abs(b.income) + Math.abs(b.expenses) - (Math.abs(a.income) + Math.abs(a.expenses))
+  );
+}
+
+function transactionExternalValue(tx: ConsolidatedTx): number | null {
+  if (!txFinanceAccount(tx)) return null;
+  if (isInternalTransfer(tx)) return null;
+  if (isStripePayout(tx)) return null;
+  if (tx.type === "TRANSFER") return null;
+  const value = tx.provider === "stripe" ? Math.abs(tx.normalizedAmount) : Math.abs(tx.amount);
+  return txDirection(tx) === "CREDIT" ? value : -value;
+}
+
+function calculateExternalDelta(year: string, month: string): number {
+  return readMonthlyTransactions(year, month).reduce((sum, tx) => {
+    const value = transactionExternalValue(tx);
+    return value == null ? sum : sum + value;
+  }, 0);
+}
+
+function latestFiatBalance(): number | null {
+  const filePath = path.join(DATA_DIR, "latest", "balances.json");
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as { balances?: Record<string, number> };
+    const balances = data.balances ?? {};
+    let total = 0;
+    let seen = false;
+    for (const account of settings.finance.accounts) {
+      const keys: string[] = [account.slug.toLowerCase()];
+      if ("accountId" in account && typeof account.accountId === "string") keys.push(account.accountId.toLowerCase());
+      if ("address" in account && typeof account.address === "string") keys.push(account.address.toLowerCase());
+      for (const key of keys) {
+        if (typeof balances[key] === "number") {
+          total += balances[key];
+          seen = true;
+          break;
+        }
+      }
+    }
+    return seen ? total : null;
+  } catch (error) {
+    console.error("Error reading latest balances.json:", error);
+    return null;
+  }
+}
+
+function allAvailableYearMonths(): Array<{ year: string; month: string }> {
+  return getAvailableYears(false)
+    .flatMap((year) => getAvailableMonths(year, false).map((month) => ({ year, month })))
+    .sort((a, b) => `${a.year}-${a.month}`.localeCompare(`${b.year}-${b.month}`));
+}
+
+function calculatePeriodBalance(year: string, month?: string): BalanceData {
+  const latest = latestFiatBalance();
+  if (latest == null) return { opening: null, closing: null };
+
+  const periodStart = month ? `${year}-${month}` : `${year}-01`;
+  const periodEnd = month ? `${year}-${month}` : `${year}-12`;
+  let afterDelta = 0;
+  let periodDelta = 0;
+
+  for (const ym of allAvailableYearMonths()) {
+    const key = `${ym.year}-${ym.month}`;
+    const delta = calculateExternalDelta(ym.year, ym.month);
+    if (key > periodEnd) afterDelta += delta;
+    if (key >= periodStart && key <= periodEnd) periodDelta += delta;
+  }
+
+  const closing = latest - afterDelta;
+  return {
+    opening: closing - periodDelta,
+    closing,
+  };
 }
 
 /**
@@ -931,16 +1219,9 @@ export function calculateMonthlyFinancials(
   month: string
 ): FinancialData {
   const transactions = readMonthlyTransactions(year, month);
-  const byAccount: Map<
-    string,
-    {
-      slug: string;
-      name: string;
-      provider: string;
-      income: number;
-      expenses: number;
-    }
-  > = new Map();
+  const byAccount: Map<string, BreakdownRow & { provider: string }> = new Map();
+  const byCategory: Map<string, BreakdownRow> = new Map();
+  const byCollective: Map<string, BreakdownRow> = new Map();
 
   let totalIncome = 0;
   let totalExpenses = 0;
@@ -963,22 +1244,22 @@ export function calculateMonthlyFinancials(
   };
 
   for (const tx of transactions) {
-    const account = settings.finance.accounts.find(
-      (a) => a.slug === tx.accountSlug
-    );
+    const account = txFinanceAccount(tx);
     if (!account) continue;
 
     // Skip internal transfers and peer-to-peer token transfers — neither
     // moves money into or out of the org.
     if (isInternalTransfer(tx)) continue;
+    if (isStripePayout(tx)) continue;
     if (tx.type === "TRANSFER") continue;
 
     const existing = byAccount.get(account.slug) ?? {
-      slug: account.slug,
-      name: account.name,
+      key: account.slug,
+      label: account.name,
       provider: account.provider,
       income: 0,
       expenses: 0,
+      net: 0,
     };
 
     // Stripe rows have currency already normalised to the account currency
@@ -997,6 +1278,19 @@ export function calculateMonthlyFinancials(
       existing.expenses += value;
       totalExpenses += value;
     }
+    existing.net = existing.income - existing.expenses;
+
+    const metadata = txMetadata(tx);
+    const collective = String(metadata.collective || "unassigned");
+    const mainCategory = mainCategoryFor(tx, direction);
+    addBreakdown(byCategory, mainCategory.key, mainCategory.label, direction, value);
+    addBreakdown(
+      byCollective,
+      collective,
+      collective === "unassigned" ? "Unassigned" : collectiveLabel(collective),
+      direction,
+      value
+    );
 
     byAccount.set(account.slug, existing);
   }
@@ -1006,9 +1300,16 @@ export function calculateMonthlyFinancials(
     expenses: totalExpenses,
     net: totalIncome - totalExpenses,
     tokens,
-    byAccount: Array.from(byAccount.values()).map((acc) => ({
-      ...acc,
-      net: acc.income - acc.expenses,
+    balance: calculatePeriodBalance(year, month),
+    byCategory: sortedBreakdown(byCategory),
+    byCollective: sortedBreakdown(byCollective),
+    byAccount: sortedBreakdown(byAccount).map((acc) => ({
+      slug: acc.key,
+      name: acc.label,
+      provider: acc.provider,
+      income: acc.income,
+      expenses: acc.expenses,
+      net: acc.net,
     })),
   };
 }
@@ -1162,6 +1463,9 @@ export function getYearlyReportData(year: string): YearlyReportData {
   let totalExpenses = 0;
   let totalTokensMinted = 0;
   let totalTokensBurnt = 0;
+  const byCategory = new Map<string, BreakdownRow>();
+  const byCollective = new Map<string, BreakdownRow>();
+  const byAccount = new Map<string, BreakdownRow>();
   const yearlyActiveMembers = new Set<string>();
 
   // Read unique contributors from monthly contributors.json files
@@ -1215,6 +1519,18 @@ export function getYearlyReportData(year: string): YearlyReportData {
     totalExpenses += financials.expenses;
     totalTokensMinted += financials.tokens.minted;
     totalTokensBurnt += financials.tokens.burnt;
+    for (const row of financials.byCategory) {
+      addBreakdown(byCategory, row.key, row.label, "CREDIT", row.income);
+      addBreakdown(byCategory, row.key, row.label, "DEBIT", row.expenses);
+    }
+    for (const row of financials.byCollective) {
+      addBreakdown(byCollective, row.key, row.label, "CREDIT", row.income);
+      addBreakdown(byCollective, row.key, row.label, "DEBIT", row.expenses);
+    }
+    for (const row of financials.byAccount) {
+      addBreakdown(byAccount, row.slug, row.name, "CREDIT", row.income);
+      addBreakdown(byAccount, row.slug, row.name, "DEBIT", row.expenses);
+    }
 
     // Get active members count from activity grid
     const monthlyActiveMembersCount = monthContributorMap.get(month) || 0;
@@ -1249,6 +1565,10 @@ export function getYearlyReportData(year: string): YearlyReportData {
       net: totalIncome - totalExpenses,
       totalTokensMinted,
       totalTokensBurnt,
+      balance: calculatePeriodBalance(year),
+      byCategory: sortedBreakdown(byCategory),
+      byCollective: sortedBreakdown(byCollective),
+      byAccount: sortedBreakdown(byAccount),
       monthlyBreakdown,
     },
     months,
