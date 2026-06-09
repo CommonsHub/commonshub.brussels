@@ -1008,7 +1008,13 @@ function latestFiatBalance(): number | null {
     for (const account of settings.finance.accounts) {
       const keys: string[] = [account.slug.toLowerCase()];
       if ("accountId" in account && typeof account.accountId === "string") keys.push(account.accountId.toLowerCase());
-      if ("address" in account && typeof account.address === "string") keys.push(account.address.toLowerCase());
+      if ("address" in account && typeof account.address === "string") {
+        keys.push(account.address.toLowerCase());
+        // chb writes balances under chain-prefixed keys (e.g. "gnosis:0x…").
+        if ("chain" in account && typeof account.chain === "string") {
+          keys.push(`${account.chain}:${account.address}`.toLowerCase());
+        }
+      }
       for (const key of keys) {
         if (typeof balances[key] === "number") {
           total += balances[key];

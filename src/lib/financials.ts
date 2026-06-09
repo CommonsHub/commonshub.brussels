@@ -129,8 +129,13 @@ function getLiveBalance(account: any): number | null {
     if (typeof account.slug === "string") keys.push(account.slug.toLowerCase());
     if (typeof account.accountId === "string")
       keys.push(account.accountId.toLowerCase());
-    if (typeof account.address === "string")
+    if (typeof account.address === "string") {
       keys.push(account.address.toLowerCase());
+      // chb writes balances under chain-prefixed keys (e.g. "gnosis:0x…").
+      if (typeof account.chain === "string") {
+        keys.push(`${account.chain}:${account.address}`.toLowerCase());
+      }
+    }
     for (const key of keys) {
       if (typeof balances[key] === "number") return balances[key];
     }
@@ -290,11 +295,14 @@ function fetchAccountData(
     const monthlyMap = new Map<string, { inflow: number; outflow: number }>();
 
     allTransactions.forEach((tx: any) => {
+      // Inflow/outflow are external only: transfers between our own accounts
+      // (INTERNAL/TRANSFER) are not income or expense, so they're excluded here.
+      // (They are still counted in the balance, which tracks every movement.)
+      if (isInternalTransfer(tx) || tx.type === "TRANSFER") return;
+
       const date = new Date(tx.timestamp * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      // Classify by the sign of the balance impact (the same signed amount used
-      // for the balance), so inflow − outflow sums to the balance change and
-      // INTERNAL transfers land on the correct side regardless of tagging.
+      // Classify by the sign of the balance impact.
       const signed = tx.normalizedAmount ?? tx.amount ?? 0;
 
       if (!monthlyMap.has(monthKey)) {
