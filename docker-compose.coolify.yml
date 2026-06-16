@@ -18,6 +18,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
     volumes:
+      # The website only reads pre-generated data. It is populated by the
+      # separate chb pipeline that owns this volume.
       - commonshub-data:/data:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-3000}/status.json >/dev/null"]
@@ -26,33 +28,6 @@ services:
       retries: 12
       start_period: 30s
 
-  chbcli:
-    build:
-      context: .
-      dockerfile: Dockerfile.chb
-    image: commonshub-brussels-chb:latest
-    restart: unless-stopped
-    environment:
-      DATA_DIR: /data
-      APP_DATA_DIR: /app-data
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      LUMA_API_KEY: ${LUMA_API_KEY}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
-      MONERIUM_CLIENT_ID: ${MONERIUM_CLIENT_ID}
-      MONERIUM_CLIENT_SECRET: ${MONERIUM_CLIENT_SECRET}
-    volumes:
-      - commonshub-data:/data
-      - commonshub-app-data:/app-data
-    healthcheck:
-      test: ["CMD", "chb", "version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
 volumes:
   commonshub-data:
     name: commonshub-data
-  commonshub-app-data:
-    name: commonshub-app-data

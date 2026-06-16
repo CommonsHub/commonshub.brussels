@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # Quick Start Script for Commons Hub Brussels
-# This script helps you set up and run the application quickly
+# This script helps you set up and run the website quickly.
+#
+# Note: the website only READS pre-generated data from ./data. Populating
+# ./data is a separate concern handled by the chb pipeline (run elsewhere).
 
 set -e
 
@@ -52,88 +55,40 @@ fi
 echo -e "${GREEN}✓ Docker is running${NC}"
 echo ""
 
+# Warn if ./data looks empty — the site has nothing to show without it.
+if [ ! -d ./data ] || [ -z "$(ls -A ./data 2>/dev/null)" ]; then
+    echo -e "${YELLOW}⚠ ./data is empty${NC}"
+    echo "The website reads pre-generated data from ./data. Populate it with the"
+    echo "chb pipeline (run separately) before the site will show content."
+    echo ""
+fi
+
 # Ask what to do
 echo "What would you like to do?"
-echo "1) Build and start the application (fresh build)"
+echo "1) Build and start the website (fresh build)"
 echo "2) Start existing container"
-echo "3) Fetch recent data only (fast)"
-echo "4) Fetch all historical data (slow)"
-echo "5) Full setup (build + fetch recent data)"
-echo "6) Stop and remove containers"
+echo "3) Stop and remove containers"
 echo ""
-read -p "Enter choice [1-6]: " choice
+read -p "Enter choice [1-3]: " choice
 
 case $choice in
     1)
         echo ""
-        echo "Building and starting the application..."
+        echo "Building and starting the website..."
         docker compose -f docker-compose.yml up -d --build
         echo ""
-        echo -e "${GREEN}✓ Application built and started${NC}"
+        echo -e "${GREEN}✓ Website built and started${NC}"
         echo "Access the website at: http://localhost:3000"
-        echo ""
-        echo "Next step:"
-        echo "Fetch data with: docker compose -f docker-compose.yml run --rm chbcli chb sync"
         ;;
     2)
         echo ""
         echo "Starting existing container..."
         docker compose -f docker-compose.yml up -d
         echo ""
-        echo -e "${GREEN}✓ Application started${NC}"
+        echo -e "${GREEN}✓ Website started${NC}"
         echo "Access the website at: http://localhost:3000"
         ;;
     3)
-        echo ""
-        echo "Fetching recent data (current and previous month)..."
-        echo "This automatically generates all aggregated data files."
-        docker compose -f docker-compose.yml run --rm chbcli chb sync
-        echo ""
-        echo -e "${GREEN}✓ Recent data fetched and processed${NC}"
-        ;;
-    4)
-        echo ""
-        echo -e "${YELLOW}⚠ This will take 15-60 minutes on first run${NC}"
-        read -p "Continue? (y/n): " confirm
-        if [ "$confirm" = "y" ]; then
-            echo ""
-            echo "Fetching all historical data..."
-            echo "This automatically generates all aggregated data files."
-            docker compose -f docker-compose.yml run --rm chbcli chb sync --history
-            echo ""
-            echo -e "${GREEN}✓ All historical data fetched and processed${NC}"
-        fi
-        ;;
-    5)
-        echo ""
-        echo "Performing full setup..."
-        echo "1/3 Building and starting..."
-        docker compose -f docker-compose.yml up -d --build
-
-        echo ""
-        echo "2/3 Waiting for container to be ready..."
-        sleep 10
-
-        echo ""
-        echo "3/3 Fetching recent data and generating views..."
-        docker compose -f docker-compose.yml run --rm chbcli chb sync
-
-        echo ""
-        echo -e "${GREEN}✓ Full setup complete!${NC}"
-        echo ""
-        echo "================================================"
-        echo "🎉 Your site is ready!"
-        echo "================================================"
-        echo ""
-        echo "Access the website at: http://localhost:3000"
-        echo ""
-        echo "Useful commands:"
-        echo "  - View logs:        docker compose -f docker-compose.yml logs -f web"
-        echo "  - Enter web shell:  docker exec -it commonshub-web sh"
-        echo "  - Stop:             docker compose -f docker-compose.yml down"
-        echo "  - Fetch more data:  docker compose -f docker-compose.yml run --rm chbcli chb sync --history"
-        ;;
-    6)
         echo ""
         echo "Stopping and removing containers..."
         docker compose -f docker-compose.yml down
@@ -147,6 +102,11 @@ case $choice in
         ;;
 esac
 
+echo ""
+echo "Useful commands:"
+echo "  - View logs:        docker compose -f docker-compose.yml logs -f web"
+echo "  - Enter web shell:  docker exec -it commonshub-web sh"
+echo "  - Stop:             docker compose -f docker-compose.yml down"
 echo ""
 echo "================================================"
 echo "For more information, see docs/deployment.md"

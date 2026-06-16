@@ -9,7 +9,8 @@ services:
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:
-      # The website only reads generated data.
+      # The website only reads pre-generated data. Populate ./data separately
+      # with the chb pipeline before starting the site.
       - ./data:/data:ro
     environment:
       - NODE_ENV=production
@@ -25,7 +26,7 @@ services:
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
 
     # Read-only root filesystem (supply-chain attack mitigation)
-    # Only /data, /tmp, and /run are writable
+    # Only /tmp and /run are writable; /data is mounted read-only.
     read_only: true
     tmpfs:
       - /tmp
@@ -45,28 +46,3 @@ services:
         limits:
           cpus: '2'
           memory: 2G
-
-  chbcli:
-    build:
-      context: .
-      dockerfile: Dockerfile.chb
-    image: commonshub-brussels-chb:latest
-    container_name: commonshub-chb
-    restart: unless-stopped
-    volumes:
-      # The CLI writes generated data here for the website to read.
-      - ./data:/data
-    environment:
-      - DATA_DIR=/data
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - LUMA_API_KEY=${LUMA_API_KEY}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
-      - MONERIUM_CLIENT_ID=${MONERIUM_CLIENT_ID}
-      - MONERIUM_CLIENT_SECRET=${MONERIUM_CLIENT_SECRET}
-    healthcheck:
-      test: ["CMD", "chb", "version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s

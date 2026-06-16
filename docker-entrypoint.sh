@@ -24,7 +24,9 @@ if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "unknown" ]; then
 fi
 
 # ============================================================
-# Ensure /data directory exists and has correct permissions
+# Ensure /data directory exists and has correct permissions.
+# The website only READS /data; it is expected to be pre-populated by the
+# separate chb pipeline and is normally mounted read-only.
 # ============================================================
 if [ -d "/data" ]; then
     if [ -w "/data" ]; then
