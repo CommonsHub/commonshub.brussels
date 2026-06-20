@@ -55,6 +55,14 @@ RESEND_API_KEY=your-resend-api-key
 WEBHOOK_SECRET=your-webhook-secret
 ```
 
+`NEXTAUTH_URL` / `AUTH_URL` must be a full URL, including `https://`. For Coolify preview domains such as `https://22.preview.commonshub.brussels`, either leave `NEXTAUTH_URL` unset and rely on the request host, or set it to the exact full preview URL. A bare hostname like `22.preview.commonshub.brussels` makes Discord reject login with `redirect_uri: Not a well formed URL`.
+
+If preview URLs change per PR, also add the corresponding callback URL to the Discord OAuth app for the preview you are testing:
+
+```text
+https://22.preview.commonshub.brussels/api/auth/callback/discord
+```
+
 If you do not use email or the deploy webhook, you can leave `RESEND_API_KEY` and `WEBHOOK_SECRET` unset.
 
 Set the data-fetching secrets for the `chbcli` service only:
