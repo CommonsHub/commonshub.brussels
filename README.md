@@ -34,11 +34,11 @@ The script will guide you through:
 cp .env.example .env
 # Edit .env and add your API keys
 
-# 2. Build and start both services
-docker compose -f docker-compose.yml.example up -d --build
+# 2. Populate ./data with the chb pipeline (run separately)
+#    The website only reads this directory; it does not fetch data.
 
-# 3. Populate the shared data directory from the CLI service
-docker compose -f docker-compose.yml.example run --rm chbcli chb sync
+# 3. Build and start the website
+docker compose -f docker-compose.yml.example up -d --build
 
 # 4. Open the website
 open http://localhost:3000
@@ -66,7 +66,7 @@ bun run dev
 
 ## Data Fetching
 
-The website reads pre-generated files from `./data`. Populate that directory with the standalone `chb` CLI, usually from the `chbcli` service in `docker-compose.yml.example`, or from the `chbcli` service in the Coolify compose setup.
+The website reads pre-generated files from `./data`. Populating that directory is a separate concern handled by the standalone `chb` pipeline (run from its own repo), which writes into `DATA_DIR`. The website never fetches data itself.
 
 - **`chb sync`** - Fetches the latest data and regenerates derived files
 - **`chb sync --history`** - Backfills historical data and regenerates derived files
@@ -90,21 +90,21 @@ Build the production application:
 bun run build
 ```
 
-**Note:** The build process only compiles the Next.js application. It does **not** fetch data. When using Docker with a mounted data volume, data must be fetched after the container starts.
+**Note:** The build process only compiles the Next.js application. It does **not** fetch data. The `./data` directory must be populated by the chb pipeline (run separately) before the site has anything to show.
 
 ### Fetching Data
 
-After building and starting the application:
+Run the chb pipeline from its own repo to write into `DATA_DIR`:
 
 ```bash
-# Local Docker: fetch the latest data from the CLI service
-docker compose -f docker-compose.yml.example run --rm chbcli chb sync
+# Latest data
+chb sync
 
-# Or fetch full history
-docker compose -f docker-compose.yml.example run --rm chbcli chb sync --history
+# Or full history
+chb sync --history
 ```
 
-For Coolify, run the same commands inside the `chbcli` service terminal. See [docs/coolify.md](docs/coolify.md).
+For Coolify, the dataset is baked into the image at build time; redeploy to publish refreshed data. See [docs/coolify.md](docs/coolify.md).
 
 If the data directory is empty, the website will display a helpful empty data state page with fetching instructions.
 
