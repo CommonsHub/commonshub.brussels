@@ -44,7 +44,7 @@ docker compose -f docker-compose.yml.example up -d --build
 open http://localhost:3000
 ```
 
-**Note:** For Coolify, deploy the single `web` container directly from [`Dockerfile.web`](Dockerfile.web) — see [docs/coolify.md](docs/coolify.md). There is no compose file or persistent volume; the dataset is baked into the image at build time.
+**Note:** For Coolify, deploy the single `web` container directly from [`Dockerfile`](Dockerfile) — see [docs/coolify.md](docs/coolify.md). There is no compose file or persistent volume; the dataset is baked into the image at build time.
 
 ## Development
 
@@ -116,7 +116,7 @@ If the data directory is empty, the website will display a helpful empty data st
 ## Documentation
 
 - **[Deployment Guide](docs/deployment.md)** - Complete Docker deployment instructions
-- **[Coolify Guide](docs/coolify.md)** - Single-resource Coolify deployment with shared persistent volume
+- **[Coolify Guide](docs/coolify.md)** - Single-container Coolify deployment from the Dockerfile
 - **[Webhook Setup](docs/WEBHOOK_SETUP.md)** - Automated deployment via GitHub webhooks
 - **[CLAUDE.md](CLAUDE.md)** - Technical architecture and component documentation
 

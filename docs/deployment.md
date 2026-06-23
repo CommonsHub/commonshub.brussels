@@ -7,9 +7,9 @@ data directory.
 
 ## Files
 
-- `Dockerfile.web` builds the website image
+- `Dockerfile` builds the website image
 - `docker-compose.yml.example` is the local Docker setup for the `web` container
-- Coolify deploys the `web` container directly from `Dockerfile.web` (no compose file)
+- Coolify deploys the `web` container directly from `Dockerfile` (no compose file)
 
 ## Local Docker
 
@@ -68,7 +68,7 @@ ls -la data/
 
 ## Coolify
 
-Coolify deploys the single `web` container directly from `Dockerfile.web`. There
+Coolify deploys the single `web` container directly from `Dockerfile`. There
 is no compose file and no persistent volume: the dataset is baked into the image
 at build time and read from `DATA_DIR` (defaults to `/data`).
 
@@ -78,7 +78,7 @@ In Coolify:
 
 1. Create one application with the `Dockerfile` build pack
 2. Point it at this repository
-3. Set the Dockerfile path to `Dockerfile.web`
+3. Set the Dockerfile path to `Dockerfile`
 4. Attach your domain with target port `3000`
 
 ### 2. Configure Environment Variables
@@ -116,7 +116,7 @@ For a more detailed Coolify walkthrough, see [coolify.md](./coolify.md).
 Build the web image:
 
 ```bash
-docker build -t commonshub-brussels-web:latest -f Dockerfile.web .
+docker build -t commonshub-brussels-web:latest -f Dockerfile .
 ```
 
 ## Quick Reference
@@ -128,4 +128,4 @@ docker build -t commonshub-brussels-web:latest -f Dockerfile.web .
 | Sync data (chb pipeline, separate repo) | `chb sync` |
 | Sync full history | `chb sync --history` |
 | View local web logs | `docker compose -f docker-compose.yml.example logs -f web` |
-| Build web image manually | `docker build -t commonshub-brussels-web:latest -f Dockerfile.web .` |
+| Build web image manually | `docker build -t commonshub-brussels-web:latest -f Dockerfile .` |

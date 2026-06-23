@@ -1,6 +1,6 @@
 # Deploying with Coolify
 
-The website deploys as a single container built from [`Dockerfile.web`](../Dockerfile.web).
+The website deploys as a single container built from [`Dockerfile`](../Dockerfile).
 There is no compose file and no persistent volume: the pre-generated dataset is
 baked into the image at build time and read from `DATA_DIR` (defaults to `/data`).
 
@@ -18,7 +18,7 @@ owns data generation and populates the build context before the image is built.
 1. Create a project and environment in Coolify.
 2. Create one application using the **Dockerfile** build pack.
 3. Point it at this repository.
-4. Set the Dockerfile path to `Dockerfile.web`.
+4. Set the Dockerfile path to `Dockerfile`.
 
 Because the website listens on container port `3000`, set the domain's **target
 port to `3000`** in Coolify. That is a Coolify setting on the domain/service
@@ -47,7 +47,7 @@ or the deploy webhook, you can leave `RESEND_API_KEY` and `WEBHOOK_SECRET` unset
 
 ## Data
 
-The dataset is copied into the image at build time (`Dockerfile.web` copies the
+The dataset is copied into the image at build time (`Dockerfile` copies the
 build context's `data/` directory into `DATA_DIR`). There is no mounted volume,
 so the data is immutable for the life of the running container and is only as
 fresh as the last deploy.
