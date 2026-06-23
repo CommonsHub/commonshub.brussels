@@ -44,7 +44,7 @@ docker compose -f docker-compose.yml.example run --rm chbcli chb sync
 open http://localhost:3000
 ```
 
-**Note:** Local Docker now uses a single compose file with both `web` and `chbcli`. For Coolify, use [docs/coolify.md](docs/coolify.md) with [docker-compose.coolify.yml](docker-compose.coolify.yml).
+**Note:** For Coolify, deploy the single `web` container directly from [`Dockerfile.web`](Dockerfile.web) — see [docs/coolify.md](docs/coolify.md). There is no compose file or persistent volume; the dataset is baked into the image at build time.
 
 ## Development
 

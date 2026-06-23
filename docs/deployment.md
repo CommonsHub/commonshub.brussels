@@ -12,7 +12,7 @@ The split is intentional: only `chbcli` needs the external API secrets, while `w
 - `Dockerfile.web` builds the website image
 - `Dockerfile.chb` builds the CLI worker image
 - `docker-compose.yml.example` is the local Docker setup for both services
-- `docker-compose.coolify.yml` is the Coolify setup for both services
+- Coolify deploys the `web` container directly from `Dockerfile.web` (no compose file)
 
 ## Local Docker
 
@@ -93,27 +93,20 @@ chmod -R ugo+rwX data
 
 ## Coolify
 
-Coolify should use one Docker Compose resource, not two separate projects.
-
-### Why
-
-- `web` and `chbcli` need shared storage
-- only `web` needs a public domain
-- only `chbcli` needs the fetch secrets
-- service-level environment variables are enough to keep those secrets off the website container
+Coolify deploys the single `web` container directly from `Dockerfile.web`. There
+is no compose file and no persistent volume: the dataset is baked into the image
+at build time and read from `DATA_DIR` (defaults to `/data`).
 
 ### 1. Create the Resource
 
 In Coolify:
 
-1. Create one application with the `Docker Compose` build pack
+1. Create one application with the `Dockerfile` build pack
 2. Point it at this repository
-3. Use `docker-compose.coolify.yml` as the compose file
-4. Expose only the `web` service on your domain
+3. Set the Dockerfile path to `Dockerfile.web`
+4. Attach your domain with target port `3000`
 
 ### 2. Configure Environment Variables
-
-Set these on the `web` service:
 
 ```bash
 NODE_ENV=production
@@ -126,53 +119,19 @@ RESEND_API_KEY=...
 WEBHOOK_SECRET=...
 ```
 
-Set these on the `chbcli` service only:
-
-```bash
-DATA_DIR=/data
-DISCORD_BOT_TOKEN=...
-LUMA_API_KEY=...
-STRIPE_SECRET_KEY=...
-ETHERSCAN_API_KEY=...
-MONERIUM_CLIENT_ID=...
-MONERIUM_CLIENT_SECRET=...
-```
+`DATA_DIR` is optional and defaults to `/data`.
 
 ### 3. Deploy
 
-Deploy the Compose application from Coolify.
-
-After the first deploy, run this in the `chbcli` service terminal:
-
-```bash
-chb sync
-```
-
-For a full historical backfill:
-
-```bash
-chb sync --history
-```
-
-### 4. Scheduled Sync
-
-Create the scheduled task on `chbcli`, not on `web`.
-
-- Command: `chb sync`
-- Example hourly schedule: `0 * * * *`
-
-### Coolify Persistence
-
-`docker-compose.coolify.yml` uses the named volume `commonshub-data`.
-
-That volume persists across normal redeployments and rebuilds. It is only removed if you explicitly delete the volume or delete the resource with its storage.
+Deploy the application from Coolify. To publish fresh data, trigger a
+rebuild/redeploy after the chb pipeline has refreshed the `data/` directory in
+the build context.
 
 ### Coolify Verification
 
 ```bash
-docker compose -f docker-compose.coolify.yml logs -f web
-docker compose -f docker-compose.coolify.yml logs -f chbcli
-docker volume inspect commonshub-data
+docker logs -f <container>
+curl -fsS http://localhost:3000/status.json
 ```
 
 For a more detailed Coolify walkthrough, see [coolify.md](./coolify.md).

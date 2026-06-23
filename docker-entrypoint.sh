@@ -28,11 +28,12 @@ fi
 # The website only READS /data; it is expected to be pre-populated by the
 # separate chb pipeline and is normally mounted read-only.
 # ============================================================
-if [ -d "/data" ]; then
-    if [ -w "/data" ]; then
-        chown -R nextjs:nodejs /data 2>/dev/null || true
+DATA_DIR="${DATA_DIR:-/data}"
+if [ -d "$DATA_DIR" ]; then
+    if [ -w "$DATA_DIR" ]; then
+        chown -R nextjs:nodejs "$DATA_DIR" 2>/dev/null || true
     else
-        echo "[data] /data is mounted read-only; skipping ownership update"
+        echo "[data] $DATA_DIR is mounted read-only; skipping ownership update"
     fi
 fi
 
