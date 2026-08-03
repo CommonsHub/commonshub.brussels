@@ -39,10 +39,10 @@ export function Header() {
               Events
             </Link>
             <Link
-              href="/workshops"
+              href="/coworking"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Workshops
+              Coworking
             </Link>
             <Link
               href="/community"
@@ -102,11 +102,11 @@ export function Header() {
               Events
             </Link>
             <Link
-              href="/workshops"
+              href="/coworking"
               className="text-muted-foreground hover:text-foreground transition-colors py-2"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Workshops
+              Coworking
             </Link>
             <Link
               href="/community"
