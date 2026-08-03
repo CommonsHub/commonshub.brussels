@@ -38,7 +38,7 @@ export default async function Image() {
       contributors = data.contributors || [];
     }
   } catch (error) {
-    console.error("[OG Members] Error fetching contributors:", error);
+    console.error("[OG Community] Error fetching contributors:", error);
   }
 
   // Get top contributors with avatars, already sorted by contribution

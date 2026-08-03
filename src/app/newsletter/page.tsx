@@ -51,10 +51,10 @@ export default function NewsletterPage() {
               Home
             </Link>
             <Link
-              href="/members"
+              href="/community"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Members
+              Community
             </Link>
           </nav>
         </div>

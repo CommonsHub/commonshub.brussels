@@ -11,16 +11,11 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTokenBalance } from "@/hooks/use-token-balance";
 import { getDisplayRoles } from "@/lib/roles";
-import settings from "@/settings/settings.json";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: session } = useSession();
   const { balance } = useTokenBalance();
-
-  // Check if user has the Member role
-  const isMember =
-    session?.user?.roles?.includes(settings.discord.roles.member) || false;
 
   // Get filtered roles to display
   const displayRoles = getDisplayRoles(session?.user?.roleDetails || []);
@@ -50,7 +45,7 @@ export function Header() {
               Workshops
             </Link>
             <Link
-              href="/members"
+              href="/community"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
               Community
@@ -72,11 +67,9 @@ export function Header() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            {!isMember && (
-              <Button variant="outline" asChild>
-                <Link href="/membership">Become a Member</Link>
-              </Button>
-            )}
+            <Button variant="outline" asChild>
+              <Link href="/donate">Donate</Link>
+            </Button>
             <Button asChild>
               <Link href="/rooms">Book Space</Link>
             </Button>
@@ -116,7 +109,7 @@ export function Header() {
               Workshops
             </Link>
             <Link
-              href="/members"
+              href="/community"
               className="text-muted-foreground hover:text-foreground transition-colors py-2"
               onClick={() => setMobileMenuOpen(false)}
             >
@@ -139,15 +132,13 @@ export function Header() {
               Contact
             </Link>
             <div className="flex flex-col gap-3 pt-4 border-t border-border">
-              {!isMember && (
-                <Button
-                  variant="outline"
-                  asChild
-                  className="w-full bg-transparent"
-                >
-                  <Link href="/membership">Become a Member</Link>
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                asChild
+                className="w-full bg-transparent"
+              >
+                <Link href="/donate">Donate</Link>
+              </Button>
               <Button asChild className="w-full">
                 <Link href="/rooms">Book Space</Link>
               </Button>
