@@ -5,42 +5,20 @@ import { MemberCard } from "@/components/member-card"
 
 interface Contributor {
   id: string
-  profile: {
-    name: string
-    username: string
-    description: string | null
-    avatar_url: string | null
-    roles: string[]
-  }
-  tokens: {
-    in: number
-    out: number
-  }
-  discord: {
-    messages: number
-    mentions: number
-  }
-  address: string | null
+  username: string
+  displayName: string
+  avatar: string | null
+  contributionCount: number
+  joinedAt: string | null
+  walletAddress?: string | null
 }
 
 interface ContributorsData {
-  period?: string
-  since?: string
-  until?: string
   contributors: Contributor[]
-}
-
-function formatPeriod(period?: string): string {
-  if (!period) return "recently"
-  const match = /^(\d+)days?$/i.exec(period)
-  if (match) {
-    const days = parseInt(match[1], 10)
-    if (days % 30 === 0 && days >= 60) {
-      return `in the last ${days / 30} months`
-    }
-    return `in the last ${days} days`
-  }
-  return period
+  totalMembers: number
+  activeCommoners: number
+  timestamp: number
+  isMockData: boolean
 }
 
 /**
@@ -75,13 +53,13 @@ export function RecentContributors() {
     const visibleContributors = allContributors
       .filter(
         (contributor) =>
-          contributor.profile.avatar_url && // Must have avatar
-          contributor.tokens.in > 0 // Must have received tokens
+          contributor.avatar &&
+          contributor.contributionCount > 0
       )
-      .sort((a, b) => b.tokens.in - a.tokens.in) // Sort by tokens received
+      .sort((a, b) => b.contributionCount - a.contributionCount)
 
-    const totalTokensReceived = visibleContributors.reduce(
-      (sum, c) => sum + c.tokens.in,
+    const totalContributions = visibleContributors.reduce(
+      (sum, contributor) => sum + contributor.contributionCount,
       0
     )
 
@@ -89,7 +67,7 @@ export function RecentContributors() {
       displayedContributors: visibleContributors,
       stats: {
         totalContributors: visibleContributors.length,
-        totalTokens: totalTokensReceived,
+        totalContributions,
       },
     }
   }, [contributorsData])
@@ -126,12 +104,9 @@ export function RecentContributors() {
             <span className="font-medium text-foreground">{stats.totalContributors}</span> active contributors
           </div>
           <div>
-            <span className="font-medium text-foreground">{Math.round(stats.totalTokens)}</span> CHT distributed
+            <span className="font-medium text-foreground">{stats.totalContributions}</span> contributions
           </div>
         </div>
-        <p className="text-xs text-muted-foreground/80">
-          {formatPeriod(contributorsData?.period)}
-        </p>
       </div>
 
       {/* Contributors Grid */}
@@ -141,13 +116,14 @@ export function RecentContributors() {
             key={contributor.id}
             member={{
               id: contributor.id,
-              username: contributor.profile.username,
-              displayName: contributor.profile.name,
-              avatar: contributor.profile.avatar_url,
-              tokensReceived: contributor.tokens.in,
+              username: contributor.username,
+              displayName: contributor.displayName,
+              avatar: contributor.avatar,
+              contributionCount: contributor.contributionCount,
             }}
             size="sm"
-            showTokens={true}
+            showTokens={false}
+            showContributionCount={true}
           />
         ))}
       </div>

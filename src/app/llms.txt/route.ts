@@ -27,7 +27,7 @@ Commons Hub Brussels is a community hub located at Rue de la Madeleine 51, 1000 
 - [Rooms](${BASE_URL}/rooms.md): Available spaces for booking
 - [Economy](${BASE_URL}/economy): Our community token economy (CHT)
 - [Finance](${BASE_URL}/finance): Transparent community finances
-- [Members](${BASE_URL}/members): Our community members
+- [Community](${BASE_URL}/community): Our community members
 - [Workshops](${BASE_URL}/workshops): Workshop offerings
 - [Contact](${BASE_URL}/contact): Get in touch
 - [Apply](${BASE_URL}/apply): Apply for membership

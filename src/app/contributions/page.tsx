@@ -152,9 +152,9 @@ export default function ContributionsPage() {
             {/* Header */}
             <div className="mb-8">
               <Button variant="ghost" size="sm" asChild className="mb-4">
-                <Link href="/members">
+                <Link href="/community">
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Members
+                  Back to Community
                 </Link>
               </Button>
               <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">

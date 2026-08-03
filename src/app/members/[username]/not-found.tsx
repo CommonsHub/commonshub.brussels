@@ -21,9 +21,9 @@ export default function MemberNotFound() {
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button asChild variant="outline">
-            <Link href="/members">
+            <Link href="/community">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Members
+              Back to Community
             </Link>
           </Button>
         </div>

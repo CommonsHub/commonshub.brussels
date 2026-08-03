@@ -128,8 +128,8 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/members" className={linkClass}>
-                  Members
+                <Link href="/community" className={linkClass}>
+                  Community
                 </Link>
               </li>
               <li>

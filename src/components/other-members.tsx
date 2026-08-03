@@ -14,8 +14,10 @@ interface MembersFile {
 }
 
 interface Contributor {
-  profile: { name: string | null; username: string | null; avatar_url: string | null };
-  tokens: { in: number; out: number };
+  displayName: string | null;
+  username: string | null;
+  avatar: string | null;
+  contributionCount: number;
 }
 
 interface ContributorsFile {
@@ -52,10 +54,10 @@ export function OtherMembers() {
           const c: ContributorsFile = await cRes.json();
           const names = new Set<string>();
           for (const contrib of c.contributors || []) {
-            // Same filter as RecentContributors (avatar + tokens.in > 0)
-            if (contrib.profile?.avatar_url && contrib.tokens?.in > 0) {
-              const n = norm(contrib.profile.name);
-              const u = norm(contrib.profile.username);
+            // Same filter as RecentContributors (avatar + contribution count)
+            if (contrib.avatar && contrib.contributionCount > 0) {
+              const n = norm(contrib.displayName);
+              const u = norm(contrib.username);
               if (n) names.add(n);
               if (u) names.add(u);
             }

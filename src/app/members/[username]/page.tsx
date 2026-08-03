@@ -155,11 +155,11 @@ export default async function MemberProfilePage({ params }: MemberPageProps) {
     <main className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-12">
         <Link
-          href="/members"
+          href="/community"
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Members
+          Back to Community
         </Link>
 
         <div className="bg-card border border-border rounded-2xl p-8">

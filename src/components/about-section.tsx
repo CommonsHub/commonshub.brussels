@@ -50,7 +50,7 @@ export function AboutSection() {
                   ),
                 )}
               </div>
-              <Link href="/members" className="text-sm text-primary hover:underline mt-4 inline-block">
+              <Link href="/community" className="text-sm text-primary hover:underline mt-4 inline-block">
                 Meet all our partner communities →
               </Link>
             </div>

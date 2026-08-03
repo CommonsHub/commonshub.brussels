@@ -6,7 +6,7 @@ A collaborative space in Brussels where communities gather, create, and grow tog
 
 - [Home](https://commonshub.brussels/) - Welcome to Commons Hub Brussels
 - [Rooms](https://commonshub.brussels/rooms) - Available spaces for booking
-- [Members](https://commonshub.brussels/members) - Our community of commoners
+- [Community](https://commonshub.brussels/community) - Our community of commoners
 - [Members List](https://commonshub.brussels/members/list) - Active paying members
 - [Calendar](https://commonshub.brussels/calendar) - Upcoming events
 - [Finance](https://commonshub.brussels/finance) - Financial transparency
