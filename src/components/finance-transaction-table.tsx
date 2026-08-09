@@ -19,6 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -38,6 +46,13 @@ import {
 } from "@/types/counterparties";
 import { useNostr } from "@/components/nostr-provider";
 import type { EnrichmentEntry } from "@/lib/transactions";
+import {
+  accountFilterSlug,
+  encodeMultiFilterParam,
+  parseMultiFilterParam,
+  toggleMultiFilterValue,
+  valueMatchesMultiFilter,
+} from "@/lib/finance-transaction-filters";
 
 // Module-scoped Intl formatters. Calling `n.toLocaleString(...)` allocates
 // a fresh formatter on every invocation, which on a 400-row table balloons
@@ -292,6 +307,78 @@ const LazySelect = memo(function LazySelect({
         ))}
       </SelectContent>
     </Select>
+  );
+});
+
+const MultiFilterDropdown = memo(function MultiFilterDropdown({
+  title,
+  allLabel,
+  selectedValues,
+  options,
+  totalCount,
+  onChange,
+}: {
+  title: string;
+  allLabel: string;
+  selectedValues: string[];
+  options: LazySelectOption[];
+  totalCount: number;
+  onChange: (values: string[]) => void;
+}) {
+  const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+  const triggerLabel =
+    selectedValues.length === 0
+      ? allLabel
+      : selectedValues.length === 1
+        ? options.find((option) => option.value === selectedValues[0])?.label ||
+          selectedValues[0]
+        : `${selectedValues.length} selected`;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 w-full justify-between px-2 text-xs font-normal"
+        >
+          <span className="truncate">{triggerLabel}</span>
+          <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-56 overflow-y-auto">
+        <DropdownMenuItem
+          className="text-xs"
+          onSelect={(event) => {
+            event.preventDefault();
+            onChange([]);
+          }}
+        >
+          {allLabel} ({totalCount})
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {options.length > 0 ? (
+          options.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option.value}
+              className="text-xs"
+              checked={selectedSet.has(option.value)}
+              onCheckedChange={() =>
+                onChange(toggleMultiFilterValue(selectedValues, option.value))
+              }
+              onSelect={(event) => event.preventDefault()}
+            >
+              {option.label}
+            </DropdownMenuCheckboxItem>
+          ))
+        ) : (
+          <DropdownMenuItem className="text-xs text-muted-foreground" disabled>
+            No {title.toLowerCase()}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 });
 
@@ -605,7 +692,7 @@ const TransactionRow = memo(function TransactionRow({
         {showAccountColumn && (
           <td className="py-2.5 px-4">
             <Badge variant="outline" className="text-xs">
-              {tx.accountName}
+              {accountFilterSlug(tx) || tx.accountSlug || tx.accountName}
             </Badge>
           </td>
         )}
@@ -1092,13 +1179,13 @@ export function FinanceTransactionTable({
   const [counterpartFilter, setCounterpartFilter] = useState<string>("all");
   const [minAmount, setMinAmount] = useState<string>("");
   const [maxAmount, setMaxAmount] = useState<string>("");
-  const [collectiveFilter, setCollectiveFilter] = useState<string>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [collectiveFilter, setCollectiveFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [descriptionFilter, setDescriptionFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [weekFilter, setWeekFilter] = useState<string>("all");
-  const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [accountFilter, setAccountFilter] = useState<string[]>([]);
   // Pagination — page is 1-indexed in the URL. The filter aggregates
   // (totals, summary cards, dropdown counts) always reflect *all*
   // filtered rows; only the rendered <tbody> uses the paged slice.
@@ -1123,13 +1210,13 @@ export function FinanceTransactionTable({
     if (counterpart) setCounterpartFilter(counterpart);
     if (min) setMinAmount(min);
     if (max) setMaxAmount(max);
-    if (collective) setCollectiveFilter(collective);
-    if (category) setCategoryFilter(category);
+    if (collective) setCollectiveFilter(parseMultiFilterParam(collective));
+    if (category) setCategoryFilter(parseMultiFilterParam(category));
     if (description) setDescriptionFilter(description);
     if (type) setTypeFilter(type);
     if (month) setMonthFilter(month);
     if (week) setWeekFilter(week);
-    if (account) setAccountFilter(account);
+    if (account) setAccountFilter(parseMultiFilterParam(account));
     if (pageParam) {
       const p = parseInt(pageParam, 10);
       if (Number.isFinite(p) && p >= 1) setPage(p);
@@ -1163,14 +1250,16 @@ export function FinanceTransactionTable({
       params.delete("maxAmount");
     }
 
-    if (collectiveFilter !== "all") {
-      params.set("collective", collectiveFilter);
+    const collectiveParam = encodeMultiFilterParam(collectiveFilter);
+    if (collectiveParam) {
+      params.set("collective", collectiveParam);
     } else {
       params.delete("collective");
     }
 
-    if (categoryFilter !== "all") {
-      params.set("category", categoryFilter);
+    const categoryParam = encodeMultiFilterParam(categoryFilter);
+    if (categoryParam) {
+      params.set("category", categoryParam);
     } else {
       params.delete("category");
     }
@@ -1199,8 +1288,9 @@ export function FinanceTransactionTable({
       params.delete("week");
     }
 
-    if (accountFilter !== "all") {
-      params.set("account", accountFilter);
+    const accountParam = encodeMultiFilterParam(accountFilter);
+    if (accountParam) {
+      params.set("account", accountParam);
     } else {
       params.delete("account");
     }
@@ -1349,12 +1439,12 @@ export function FinanceTransactionTable({
     );
   }, [transactions]);
 
-  const uniqueCategories = useMemo(() => {
+  const configuredCategoryOrder = useMemo(() => {
     const categories = new Set<string>();
     for (const key of ["credit", "debit", "mint", "burn"] as const) {
       for (const cat of categoriesObj[key] || []) categories.add(cat);
     }
-    return Array.from(categories).sort();
+    return Array.from(categories);
   }, [categoriesObj]);
 
   const uniqueMonths = useMemo(() => {
@@ -1392,18 +1482,14 @@ export function FinanceTransactionTable({
   }, [transactions, viewScope]);
 
   const uniqueAccounts = useMemo(() => {
-    // [slug, name] tuples — slug is what the URL stores and what the
-    // filter compares against; name is the human label shown in the
-    // dropdown.
-    const accounts = new Map<string, string>();
+    const accounts = new Set<string>();
     transactions.forEach((tx) => {
-      if (tx.accountSlug) {
-        accounts.set(tx.accountSlug, tx.accountName || tx.accountSlug);
-      }
+      const slug = accountFilterSlug(tx);
+      if (slug) accounts.add(slug);
     });
-    return Array.from(accounts.entries())
-      .sort((a, b) => a[1].localeCompare(b[1]))
-      .map(([slug, name]) => ({ slug, name }));
+    return Array.from(accounts).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
   }, [transactions]);
 
   // Calculate counts for each filter option
@@ -1441,7 +1527,7 @@ export function FinanceTransactionTable({
       const meta = getTxMeta(tx);
       const txCollective = meta.collective || UNASSIGNED_COLLECTIVE;
       const txCategory = meta.category || "other";
-      const txAccount = tx.accountSlug;
+      const txAccount = accountFilterSlug(tx);
 
       // Helper to check if tx matches all filters except one
       const matchesFiltersExcept = (exceptFilter: string) => {
@@ -1465,14 +1551,12 @@ export function FinanceTransactionTable({
           return false;
         if (
           exceptFilter !== "collective" &&
-          collectiveFilter !== "all" &&
-          txCollective !== collectiveFilter
+          !valueMatchesMultiFilter(txCollective, collectiveFilter)
         )
           return false;
         if (
           exceptFilter !== "category" &&
-          categoryFilter !== "all" &&
-          txCategory !== categoryFilter
+          !valueMatchesMultiFilter(txCategory, categoryFilter)
         )
           return false;
         if (exceptFilter !== "type" && typeFilter !== "all") {
@@ -1495,8 +1579,7 @@ export function FinanceTransactionTable({
           return false;
         if (
           exceptFilter !== "account" &&
-          accountFilter !== "all" &&
-          txAccount !== accountFilter
+          !valueMatchesMultiFilter(txAccount, accountFilter)
         )
           return false;
         // Description has no dropdown of its own — always apply it.
@@ -1578,6 +1661,48 @@ export function FinanceTransactionTable({
     getTxMeta,
   ]);
 
+  const collectiveFilterOptions = useMemo<LazySelectOption[]>(() => {
+    const options = collectives
+      .filter((slug) => (filterCounts.collectives.get(slug) || 0) > 0)
+      .map((slug) => ({
+        value: slug,
+        label: `${collectivesObj[slug]?.name || slug} (${filterCounts.collectives.get(slug) || 0})`,
+      }));
+    const unassignedCount = filterCounts.collectives.get(UNASSIGNED_COLLECTIVE) || 0;
+    if (unassignedCount > 0) {
+      options.push({
+        value: UNASSIGNED_COLLECTIVE,
+        label: `Unassigned (${unassignedCount})`,
+      });
+    }
+    return options;
+  }, [collectives, collectivesObj, filterCounts.collectives]);
+
+  const categoryFilterOptions = useMemo<LazySelectOption[]>(() => {
+    const configured = configuredCategoryOrder.filter(
+      (cat) => (filterCounts.categories.get(cat) || 0) > 0
+    );
+    const configuredSet = new Set(configuredCategoryOrder);
+    const generated = Array.from(filterCounts.categories.keys())
+      .filter((cat) => !configuredSet.has(cat) && (filterCounts.categories.get(cat) || 0) > 0)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return [...configured, ...generated].map((cat) => ({
+      value: cat,
+      label: `${cat} (${filterCounts.categories.get(cat) || 0})`,
+    }));
+  }, [configuredCategoryOrder, filterCounts.categories]);
+
+  const accountFilterOptions = useMemo<LazySelectOption[]>(
+    () =>
+      uniqueAccounts
+        .filter((account) => (filterCounts.accounts.get(account) || 0) > 0)
+        .map((account) => ({
+          value: account,
+          label: `${account} (${filterCounts.accounts.get(account) || 0})`,
+        })),
+    [uniqueAccounts, filterCounts.accounts]
+  );
+
   // Filter transactions based on all filters
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -1599,16 +1724,16 @@ export function FinanceTransactionTable({
       if (maxAmount && amount > parseFloat(maxAmount)) return false;
 
       // Filter by collective
-      if (collectiveFilter !== "all") {
+      if (collectiveFilter.length > 0) {
         const meta = getTxMeta(tx);
         const txCollective = meta.collective || UNASSIGNED_COLLECTIVE;
-        if (txCollective !== collectiveFilter) return false;
+        if (!valueMatchesMultiFilter(txCollective, collectiveFilter)) return false;
       }
 
       // Filter by category
-      if (categoryFilter !== "all") {
+      if (categoryFilter.length > 0) {
         const txCategory = getTxMeta(tx).category || "other";
-        if (txCategory !== categoryFilter) return false;
+        if (!valueMatchesMultiFilter(txCategory, categoryFilter)) return false;
       }
 
       // Filter by description (case-insensitive substring match).
@@ -1646,8 +1771,8 @@ export function FinanceTransactionTable({
       }
 
       // Filter by account
-      if (accountFilter !== "all") {
-        if (tx.accountSlug !== accountFilter) return false;
+      if (accountFilter.length > 0) {
+        if (!valueMatchesMultiFilter(accountFilterSlug(tx), accountFilter)) return false;
       }
 
       return true;
@@ -1921,7 +2046,7 @@ export function FinanceTransactionTable({
         collective,
         category,
         description,
-        ...(showAccountColumn ? [tx.accountName || ""] : []),
+        ...(showAccountColumn ? [accountFilterSlug(tx) || tx.accountSlug || ""] : []),
         tx.hash ?? "",
       ];
 
@@ -1991,7 +2116,7 @@ export function FinanceTransactionTable({
               c.collective === UNASSIGNED_COLLECTIVE
                 ? "Unassigned"
                 : collectivesObj[c.collective]?.name || c.collective;
-            const isActive = collectiveFilter === c.collective;
+            const isActive = collectiveFilter.includes(c.collective);
             const totalCount = c.perCurrency.reduce(
               (sum, r) => sum + r.count,
               0
@@ -2001,7 +2126,9 @@ export function FinanceTransactionTable({
                 key={c.collective}
                 type="button"
                 onClick={() =>
-                  setCollectiveFilter(isActive ? "all" : c.collective)
+                  setCollectiveFilter((current) =>
+                    toggleMultiFilterValue(current, c.collective)
+                  )
                 }
                 aria-pressed={isActive}
                 title={
@@ -2212,52 +2339,24 @@ export function FinanceTransactionTable({
               </Select>
             </th>
             <th className="py-2 px-4">
-              <Select
-                value={collectiveFilter}
-                onValueChange={setCollectiveFilter}
-              >
-                <SelectTrigger className="h-7 text-xs w-full">
-                  <SelectValue placeholder="All collectives" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">
-                    All collectives ({totals.count})
-                  </SelectItem>
-                  {collectives.map((slug) => (
-                    <SelectItem key={slug} value={slug} className="text-xs">
-                      {collectivesObj[slug]?.name || slug} (
-                      {filterCounts.collectives.get(slug) || 0})
-                    </SelectItem>
-                  ))}
-                  <SelectItem
-                    value={UNASSIGNED_COLLECTIVE}
-                    className="text-xs"
-                  >
-                    Unassigned (
-                    {filterCounts.collectives.get(UNASSIGNED_COLLECTIVE) || 0})
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <MultiFilterDropdown
+                title="Collectives"
+                allLabel="All collectives"
+                selectedValues={collectiveFilter}
+                options={collectiveFilterOptions}
+                totalCount={totals.count}
+                onChange={setCollectiveFilter}
+              />
             </th>
             <th className="py-2 px-4">
-              <Select
-                value={categoryFilter}
-                onValueChange={setCategoryFilter}
-              >
-                <SelectTrigger className="h-7 text-xs w-full">
-                  <SelectValue placeholder="All categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">
-                    All categories ({totals.count})
-                  </SelectItem>
-                  {uniqueCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat} className="text-xs">
-                      {cat} ({filterCounts.categories.get(cat) || 0})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiFilterDropdown
+                title="Categories"
+                allLabel="All categories"
+                selectedValues={categoryFilter}
+                options={categoryFilterOptions}
+                totalCount={totals.count}
+                onChange={setCategoryFilter}
+              />
             </th>
             <th className="py-2 px-4">
               <Input
@@ -2270,29 +2369,14 @@ export function FinanceTransactionTable({
             </th>
             {showAccountColumn && (
               <th className="py-2 px-4">
-                <Select
-                  value={accountFilter}
-                  onValueChange={setAccountFilter}
-                >
-                    <SelectTrigger className="h-7 text-xs w-full">
-                      <SelectValue placeholder="All accounts" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="text-xs">
-                        All accounts ({totals.count})
-                      </SelectItem>
-                      {uniqueAccounts.map((account) => (
-                        <SelectItem
-                          key={account.slug}
-                          value={account.slug}
-                          className="text-xs"
-                        >
-                          {account.name} (
-                          {filterCounts.accounts.get(account.slug) || 0})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <MultiFilterDropdown
+                  title="Accounts"
+                  allLabel="All accounts"
+                  selectedValues={accountFilter}
+                  options={accountFilterOptions}
+                  totalCount={totals.count}
+                  onChange={setAccountFilter}
+                />
                 </th>
             )}
           </tr>
@@ -2548,9 +2632,9 @@ export function FinanceTransactionTable({
                   <SelectValue placeholder="Leave unchanged" />
                 </SelectTrigger>
                 <SelectContent>
-                  {uniqueCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
+                  {categoryFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

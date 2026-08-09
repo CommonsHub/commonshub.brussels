@@ -2,7 +2,7 @@ import * as os from "os";
 import * as path from "path";
 
 function resolveDataDir(): string {
-  const raw = process.env.DATA_DIR || path.join(process.cwd(), "data");
+  const raw = process.env.DATA_DIR || "/data";
   // Expand ~ to home directory (shell tilde is not expanded by Node.js)
   if (raw.startsWith("~/")) {
     return path.join(os.homedir(), raw.slice(2));
