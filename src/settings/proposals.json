@@ -1,0 +1,95 @@
+{
+  "types": [
+    {
+      "id": "booking",
+      "label": "Room Booking",
+      "icon": "DoorOpen",
+      "color": "#3b82f6",
+      "description": "Book a room for a meeting or working session",
+      "fields": [
+        { "id": "room", "label": "Room", "type": "room-select", "required": true },
+        { "id": "date", "label": "Date", "type": "date", "required": true },
+        { "id": "startTime", "label": "Start Time", "type": "time", "required": true },
+        { "id": "duration", "label": "Duration (minutes)", "type": "number", "required": true, "default": 60 },
+        { "id": "attendees", "label": "Expected attendees", "type": "number", "required": false }
+      ]
+    },
+    {
+      "id": "event",
+      "label": "Event",
+      "icon": "Calendar",
+      "color": "#8b5cf6",
+      "description": "Organize a community event at the hub",
+      "fields": [
+        { "id": "room", "label": "Room", "type": "room-select", "required": true },
+        { "id": "date", "label": "Date", "type": "date", "required": true },
+        { "id": "startTime", "label": "Start Time", "type": "time", "required": true },
+        { "id": "duration", "label": "Duration (minutes)", "type": "number", "required": true, "default": 120 },
+        { "id": "attendees", "label": "Expected attendees", "type": "number", "required": false },
+        { "id": "equipment", "label": "Equipment needed", "type": "multiselect", "options": ["Projector", "Whiteboard", "Microphone", "Webcam", "Flip chart"], "required": false },
+        { "id": "catering", "label": "Catering", "type": "select", "options": ["None", "Coffee & snacks", "Lunch", "Drinks"], "required": false },
+        { "id": "publicEvent", "label": "Open to public?", "type": "boolean", "default": true }
+      ]
+    },
+    {
+      "id": "workshop",
+      "label": "Workshop",
+      "icon": "GraduationCap",
+      "color": "#f59e0b",
+      "description": "Host a workshop or training session",
+      "fields": [
+        { "id": "room", "label": "Room", "type": "room-select", "required": true },
+        { "id": "date", "label": "Date", "type": "date", "required": true },
+        { "id": "startTime", "label": "Start Time", "type": "time", "required": true },
+        { "id": "duration", "label": "Duration (minutes)", "type": "number", "required": true, "default": 180 },
+        { "id": "attendees", "label": "Expected attendees", "type": "number", "required": false },
+        { "id": "maxParticipants", "label": "Max participants", "type": "number", "required": false },
+        { "id": "equipment", "label": "Equipment needed", "type": "multiselect", "options": ["Projector", "Whiteboard", "Microphone", "Webcam", "Flip chart"], "required": false },
+        { "id": "ticketPrice", "label": "Ticket price (€)", "type": "number", "required": false },
+        { "id": "publicEvent", "label": "Open to public?", "type": "boolean", "default": true }
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "Finance",
+      "icon": "Coins",
+      "color": "#10b981",
+      "description": "Financial proposal (budget, expense, investment)",
+      "fields": [
+        { "id": "amount", "label": "Amount (€)", "type": "number", "required": true },
+        { "id": "category", "label": "Category", "type": "select", "options": ["Equipment", "Maintenance", "Supplies", "Services", "Other"], "required": true },
+        { "id": "recurring", "label": "Recurring?", "type": "boolean", "default": false },
+        { "id": "frequency", "label": "Frequency", "type": "select", "options": ["One-time", "Monthly", "Quarterly", "Yearly"], "required": false }
+      ]
+    },
+    {
+      "id": "space",
+      "label": "Space",
+      "icon": "Hammer",
+      "color": "#ef4444",
+      "description": "Proposal about the physical space (renovation, furniture, etc.)",
+      "fields": [
+        { "id": "area", "label": "Area", "type": "select", "options": ["Kitchen", "Coworking", "Meeting rooms", "Entrance", "Garden", "Other"], "required": true },
+        { "id": "budget", "label": "Estimated budget (€)", "type": "number", "required": false },
+        { "id": "timeline", "label": "Timeline", "type": "select", "options": ["ASAP", "This month", "This quarter", "No rush"], "required": false }
+      ]
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "icon": "MessageSquare",
+      "color": "#6b7280",
+      "description": "Any other proposal or discussion",
+      "fields": []
+    }
+  ],
+  "statuses": [
+    { "id": "draft", "label": "Draft", "color": "#6b7280" },
+    { "id": "pending", "label": "Pending", "color": "#f59e0b" },
+    { "id": "funded", "label": "Funded", "color": "#3b82f6" },
+    { "id": "confirmed", "label": "Confirmed", "color": "#10b981" },
+    { "id": "completed", "label": "Completed", "color": "#8b5cf6" },
+    { "id": "cancelled", "label": "Cancelled", "color": "#ef4444" },
+    { "id": "closed", "label": "Closed", "color": "#6b7280" }
+  ]
+}
