@@ -28,6 +28,15 @@ export interface DiscordThreadOptions {
  * Send an email using Resend
  * If RESEND_API_KEY is not set, logs a warning instead
  */
+/**
+ * Which address we send from. It has to be one the API key is allowed to use —
+ * a key restricted to a domain answers 403 for anything else — so deployments
+ * on another domain set EMAIL_FROM.
+ */
+export function emailFrom(): string {
+  return process.env.EMAIL_FROM || settings.email.from
+}
+
 export async function sendEmail(options: EmailOptions) {
   const { to, subject, html, cc, replyTo } = options
 
@@ -41,14 +50,24 @@ export async function sendEmail(options: EmailOptions) {
     };
   }
 
-  return resend.emails.send({
-    from: `Commons Hub <${settings.email.from}>`,
+  const result = await resend.emails.send({
+    from: `Commons Hub <${emailFrom()}>`,
     to,
     subject,
     html,
     cc,
     replyTo,
   })
+
+  // Resend reports refusals in the body rather than by throwing. Ignoring that
+  // is how "sent" ends up meaning "rejected, and nobody noticed".
+  if (result.error) {
+    console.error(
+      `[email] Resend refused "${subject}" from ${emailFrom()}: ${result.error.message}`,
+    )
+  }
+
+  return result
 }
 
 /**

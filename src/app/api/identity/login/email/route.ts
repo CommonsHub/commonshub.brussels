@@ -15,14 +15,27 @@ export async function POST(request: Request) {
   }
 
   const { email, sessionPubkey } = parsed.data;
-  const { code, expiresInMinutes } = startEmailLogin({ email, sessionPubkey });
+  const issued = startEmailLogin({ email, sessionPubkey });
+
+  if (!issued.ok) {
+    return NextResponse.json(
+      {
+        error: `We just sent one. You can ask for another in ${issued.retryInSeconds}s.`,
+        retryInSeconds: issued.retryInSeconds,
+      },
+      { status: 429 },
+    );
+  }
+
+  const { code, expiresInMinutes } = issued;
 
   if (!process.env.RESEND_API_KEY) {
     // Nowhere to send it: log it so a deployment without email is still usable.
     console.info(`[identity] sign-in code for ${email}: ${code}`);
+    return NextResponse.json({ ok: true, expiresInMinutes });
   }
 
-  await sendEmail({
+  const result = await sendEmail({
     to: email,
     subject: `${code} is your Commons Hub code`,
     html: `
@@ -32,6 +45,15 @@ export async function POST(request: Request) {
       ${expiresInMinutes} minutes. If you did not ask for it, you can ignore this email.</p>
     `,
   });
+
+  // If the mail was refused, say so — leaving someone waiting for an email that
+  // was never accepted is worse than telling them it failed.
+  if ("error" in result && result.error) {
+    return NextResponse.json(
+      { error: "We could not send that email. Tell us at hello@commonshub.brussels." },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({ ok: true, expiresInMinutes });
 }

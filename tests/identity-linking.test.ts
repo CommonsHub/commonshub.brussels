@@ -21,9 +21,14 @@ const SESSION = "e".repeat(64);
 
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+function issue(email: string): string {
+  const issued = startEmailLogin({ email, sessionPubkey: SESSION });
+  if (!issued.ok) throw new Error(`throttled for ${issued.retryInSeconds}s`);
+  return issued.code;
+}
+
 function signInByEmail(email: string) {
-  const { code } = startEmailLogin({ email, sessionPubkey: SESSION });
-  const result = completeEmailLogin({ email, code, sessionPubkey: SESSION });
+  const result = completeEmailLogin({ email, code: issue(email), sessionPubkey: SESSION });
   if (!result.ok) throw new Error(result.error);
   return result.account;
 }
@@ -89,7 +94,7 @@ describe("adding an email to a Discord account", () => {
     });
     expect(wrong.ok).toBe(false);
 
-    const { code } = startEmailLogin({ email: "sofie@example.org", sessionPubkey: SESSION });
+    const code = issue("sofie@example.org");
     const linked = linkEmailToAccount(account.id, {
       email: "sofie@example.org",
       code,
@@ -106,7 +111,7 @@ describe("adding an email to a Discord account", () => {
     const emailAccount = signInByEmail("rita@example.org");
     const discordAccount = upsertDiscordAccount({ discordId: "555", username: "rita" });
 
-    const { code } = startEmailLogin({ email: "rita@example.org", sessionPubkey: SESSION });
+    const code = issue("rita@example.org");
     const linked = linkEmailToAccount(discordAccount.id, {
       email: "rita@example.org",
       code,

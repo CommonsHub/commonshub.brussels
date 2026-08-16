@@ -163,15 +163,38 @@ export async function fetchMe(): Promise<Me | null> {
   return data.account ?? null;
 }
 
+/** Matches the server's cooldown; the button counts down from here. */
+export const RESEND_COOLDOWN_SECONDS = 60;
+
+/** Thrown when a code was asked for again too soon. */
+export class RetryLaterError extends Error {
+  constructor(
+    message: string,
+    readonly retryInSeconds: number,
+  ) {
+    super(message);
+    this.name = "RetryLaterError";
+  }
+}
+
 /** Ask for a sign-in code. The session key registered here is what it unlocks. */
-export async function requestEmailCode(email: string): Promise<void> {
+export async function requestEmailCode(email: string): Promise<{ expiresInMinutes: number }> {
   const response = await fetch("/api/identity/login/email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, sessionPubkey: sessionPubkey() }),
   });
   const data = await response.json();
+
+  if (response.status === 429) {
+    throw new RetryLaterError(
+      data?.error || "You just asked for one. Give it a moment.",
+      Number(data?.retryInSeconds ?? RESEND_COOLDOWN_SECONDS),
+    );
+  }
   if (!response.ok) throw new Error(data?.error || "We could not send that code.");
+
+  return { expiresInMinutes: Number(data?.expiresInMinutes ?? 10) };
 }
 
 /** Hand back the code that was emailed. Only valid in this browser. */

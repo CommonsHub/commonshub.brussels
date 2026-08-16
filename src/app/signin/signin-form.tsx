@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import {
+  RESEND_COOLDOWN_SECONDS,
+  RetryLaterError,
   linkDiscordSession,
   linkEmail,
   passkeysSupported,
@@ -38,6 +40,14 @@ export function SignInForm() {
   const [linkFailed, setLinkFailed] = useState(false);
   const [canUsePasskeys, setCanUsePasskeys] = useState(false);
   const [linkingEmail, setLinkingEmail] = useState(false);
+  const [retryIn, setRetryIn] = useState(0);
+
+  // Tick the resend cooldown down, so the button says when it comes back.
+  useEffect(() => {
+    if (retryIn <= 0) return;
+    const timer = setInterval(() => setRetryIn((n) => Math.max(0, n - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [retryIn]);
 
   useEffect(() => setCanUsePasskeys(passkeysSupported()), []);
 
@@ -84,10 +94,17 @@ export function SignInForm() {
     setBusy("code");
     setError(null);
     try {
-      await requestEmailCode(email.trim());
+      const { expiresInMinutes } = await requestEmailCode(email.trim());
+      void expiresInMinutes;
       setStage("code");
       setCode("");
+      setRetryIn(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
+      const wait = err instanceof RetryLaterError ? err.retryInSeconds : 0;
+      if (wait > 0) {
+        setStage("code");
+        setRetryIn(wait);
+      }
       setError(err instanceof Error ? err.message : "We could not send that code.");
     } finally {
       setBusy(null);
@@ -329,8 +346,13 @@ export function SignInForm() {
             >
               <ArrowLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <Button variant="outline" size="sm" onClick={sendCode} disabled={busy !== null}>
-              Send a new code
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={sendCode}
+              disabled={busy !== null || retryIn > 0}
+            >
+              {retryIn > 0 ? `Send a new code in ${retryIn}s` : "Send a new code"}
             </Button>
           </div>
         </CardContent>

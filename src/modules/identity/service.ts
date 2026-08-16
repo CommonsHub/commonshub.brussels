@@ -44,6 +44,8 @@ export const SESSION_COOKIE = "chb_session";
 const SESSION_TTL_DAYS = 30;
 const CODE_TTL_MINUTES = 10;
 const MAX_CODE_ATTEMPTS = 5;
+/** How long before a new code can be asked for. Stops inbox-flooding. */
+export const CODE_RESEND_SECONDS = 60;
 
 function accountId(): string {
   return `acc_${randomToken().slice(0, 16)}`;
@@ -93,22 +95,35 @@ export interface EmailLoginRequest {
  * emailed. The account itself is only created once the code is entered, so an
  * address someone typed by mistake never becomes an account.
  */
-export function startEmailLogin(request: EmailLoginRequest): {
-  code: string;
-  expiresInMinutes: number;
-} {
+export type StartEmailLoginResult =
+  | { ok: true; code: string; expiresInMinutes: number }
+  | { ok: false; retryInSeconds: number };
+
+export function startEmailLogin(request: EmailLoginRequest): StartEmailLoginResult {
+  const email = request.email.trim().toLowerCase();
+
+  // One code a minute per browser and address: enough to recover from a typo,
+  // not enough to bury someone's inbox.
+  const existing = findPendingLogin(email, request.sessionPubkey);
+  if (existing) {
+    const age = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
+    if (age < CODE_RESEND_SECONDS) {
+      return { ok: false, retryInSeconds: Math.ceil(CODE_RESEND_SECONDS - age) };
+    }
+  }
+
   const code = randomCode();
   const now = Date.now();
   savePendingLogin({
     id: `pen_${randomToken().slice(0, 16)}`,
-    email: request.email.trim().toLowerCase(),
+    email,
     codeHash: hashCode(code, request.sessionPubkey),
     sessionPubkey: request.sessionPubkey,
     attempts: 0,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CODE_TTL_MINUTES * 60_000).toISOString(),
   });
-  return { code, expiresInMinutes: CODE_TTL_MINUTES };
+  return { ok: true, code, expiresInMinutes: CODE_TTL_MINUTES };
 }
 
 export type EmailCodeResult =
