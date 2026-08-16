@@ -11,6 +11,7 @@ import { fetchTaskList } from "@/modules/tasks/tasklist";
 import { currentCaller } from "@/modules/identity/server";
 import { isMember, isSteward } from "@/modules/identity/service";
 import { balanceForDiscordUser } from "@/modules/payments/tokens";
+import { proposalTreasury } from "@/modules/payments/treasury";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
 import { Contributors } from "@/components/proposals/contributors";
@@ -69,6 +70,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
 
   const taskList = proposal.taskListId ? await fetchTaskList(proposal.taskListId).catch(() => null) : null;
 
+  const treasury = await proposalTreasury(proposal.id).catch(() => null);
   const balance =
     account?.discordId && (await balanceForDiscordUser(account.discordId).catch(() => null));
   const tokenBalance = balance && balance.available ? balance.balance : null;
@@ -367,6 +369,28 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                   </div>
                   <Contributors contributions={proposal.contributions} />
                 </div>
+
+                {treasury && (
+                  <>
+                    <hr className="border-border" />
+                    <p className="text-xs text-muted-foreground">
+                      Token contributions collect in this proposal&apos;s own Safe
+                      {treasury.tokenBalance > 0 && (
+                        <> — holding {treasury.tokenBalance} {treasury.symbol} right now</>
+                      )}
+                      {!treasury.deployed && " (deployed the first time money moves out)"}
+                      {": "}
+                      <a
+                        href={treasury.explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-primary hover:underline break-all"
+                      >
+                        {treasury.address}
+                      </a>
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
 

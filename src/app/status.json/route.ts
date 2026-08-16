@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readFileSync, existsSync, readdirSync, statSync, accessSync, constants } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "@/lib/data-paths";
+import { signerStatus } from "@/modules/payments/treasury";
 
 // Store when the application started (runtime)
 const startTime = new Date();
@@ -188,6 +189,10 @@ export async function GET() {
       },
       environment: process.env.NODE_ENV || "development",
       dataDir,
+      // The EOA that deploys proposal Safes and pays their gas — the one
+      // address that ever needs topping up. Reads are cached and best-effort,
+      // so a chain hiccup never fails the health check.
+      proposalSigner: await signerStatus().catch(() => null),
     };
 
     return NextResponse.json(response, {

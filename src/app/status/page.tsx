@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Clock, GitBranch, Server, Timer, Loader2 } from "lucide-react";
+import { Clock, ExternalLink, GitBranch, Server, Timer, Loader2, Wallet } from "lucide-react";
 
 interface StatusData {
   status: string;
@@ -55,6 +55,15 @@ interface StatusData {
       lastSync: string | null;
     };
   };
+  proposalSigner?: {
+    configured: boolean;
+    address: string | null;
+    explorerUrl: string | null;
+    chainId: number;
+    gasBalance: number | null;
+    gasSymbol: string;
+    low: boolean;
+  } | null;
 }
 
 export default function StatusPage() {
@@ -297,6 +306,64 @@ export default function StatusPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* The EOA that deploys proposal Safes and pays their gas. */}
+        {data.proposalSigner && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="w-5 h-5" />
+                Proposal signer
+              </CardTitle>
+              <CardDescription>
+                Deploys each proposal&apos;s Safe and pays the gas — the one address that needs
+                topping up.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.proposalSigner.configured && data.proposalSigner.address ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">Address</span>
+                    <a
+                      href={data.proposalSigner.explorerUrl ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-sm text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      {data.proposalSigner.address}
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <Separator />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">Gas balance</span>
+                    {data.proposalSigner.gasBalance !== null ? (
+                      <Badge variant={data.proposalSigner.low ? "destructive" : "default"}>
+                        {data.proposalSigner.gasBalance.toFixed(4)} {data.proposalSigner.gasSymbol}
+                        {data.proposalSigner.low && " — top up"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">could not read the chain</Badge>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">Chain</span>
+                    <span className="text-sm">
+                      {data.proposalSigner.chainId === 42220
+                        ? "Celo mainnet"
+                        : `chain ${data.proposalSigner.chainId}`}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Not configured — token contributions and refunds are off here.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* JSON API Link */}
         <Card className="bg-muted/50">
