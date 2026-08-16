@@ -30,6 +30,7 @@ import {
   findPendingLogin,
   findSession,
   findSessionByPubkey,
+  mergeAccounts,
   savePendingLogin,
   saveAccount,
   saveSession,
@@ -73,6 +74,7 @@ function newAccount(input: {
     encryptedKey: secret,
     pubkey,
     roles: input.roles ?? ["guest"],
+    passkeys: [],
     createdAt: now,
     lastSeenAt: now,
   };
@@ -118,11 +120,11 @@ export type EmailCodeResult =
  * it, for ten minutes, and five wrong guesses burn it — six digits are easy to
  * type and easy to guess, so the attempts are what make them safe.
  */
-export function completeEmailLogin(request: {
+export function checkEmailCode(request: {
   email: string;
   code: string;
   sessionPubkey: string;
-}): EmailCodeResult {
+}): { ok: true } | { ok: false; error: string } {
   const email = request.email.trim().toLowerCase();
   const code = request.code.replace(/\D/g, "");
   const pending = findPendingLogin(email, request.sessionPubkey);
@@ -145,6 +147,18 @@ export function completeEmailLogin(request: {
   }
 
   deletePendingLogin(pending.id);
+  return { ok: true };
+}
+
+export function completeEmailLogin(request: {
+  email: string;
+  code: string;
+  sessionPubkey: string;
+}): EmailCodeResult {
+  const email = request.email.trim().toLowerCase();
+  const check = checkEmailCode({ ...request, email });
+  if (!check.ok) return { ok: false, error: check.error };
+
   const account = findAccountByEmail(email) ?? saveAccount(newAccount({ email }));
   const session = openSession(account, request.sessionPubkey);
   return { ok: true, account, session };
@@ -193,6 +207,89 @@ export function upsertDiscordAccount(profile: DiscordProfile): Account {
       roles,
     }),
   );
+}
+
+/**
+ * Connect a Discord account to the account that is already signed in — the
+ * "you signed in by email, now link Discord" path. If that Discord account
+ * already existed here, the two are folded into one rather than left as
+ * duplicates.
+ */
+export function linkDiscordToAccount(
+  accountId: string,
+  profile: DiscordProfile,
+): { ok: true; account: Account } | { ok: false; error: string } {
+  const account = findAccount(accountId);
+  if (!account) return { ok: false, error: "This account no longer exists." };
+
+  const roles = rolesFromDiscord(profile.roleNames);
+  const other = findAccountByDiscordId(profile.discordId);
+
+  if (other && other.id !== account.id) {
+    // Keep the older account: it is the one with history behind it.
+    const [primary, secondary] =
+      other.createdAt <= account.createdAt ? [other, account] : [account, other];
+    const merged = mergeAccounts(primary.id, secondary.id);
+    if (!merged) return { ok: false, error: "We could not link those two accounts." };
+    return {
+      ok: true,
+      account: saveAccount({
+        ...merged,
+        discordId: profile.discordId,
+        displayName: profile.username || merged.displayName,
+        roles: Array.from(new Set([...merged.roles, ...roles])),
+        lastSeenAt: new Date().toISOString(),
+      }),
+    };
+  }
+
+  return {
+    ok: true,
+    account: saveAccount({
+      ...account,
+      discordId: profile.discordId,
+      email: account.email ?? (profile.email?.toLowerCase() ?? null),
+      displayName: account.displayName || profile.username,
+      roles: Array.from(new Set([...account.roles, ...roles])),
+      lastSeenAt: new Date().toISOString(),
+    }),
+  };
+}
+
+/**
+ * Add an email address to an account that signed in with Discord and had none.
+ * The code proves the address belongs to them, exactly as at sign-in.
+ */
+export function linkEmailToAccount(
+  accountId: string,
+  input: { email: string; code: string; sessionPubkey: string },
+): { ok: true; account: Account } | { ok: false; error: string } {
+  const account = findAccount(accountId);
+  if (!account) return { ok: false, error: "This account no longer exists." };
+
+  const email = input.email.trim().toLowerCase();
+  const check = checkEmailCode({ ...input, email });
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const other = findAccountByEmail(email);
+  if (other && other.id !== account.id) {
+    const [primary, secondary] =
+      other.createdAt <= account.createdAt ? [other, account] : [account, other];
+    const merged = mergeAccounts(primary.id, secondary.id);
+    if (!merged) return { ok: false, error: "We could not link those two accounts." };
+    return { ok: true, account: saveAccount({ ...merged, email }) };
+  }
+
+  return { ok: true, account: saveAccount({ ...account, email }) };
+}
+
+/** What is still missing before an account is fully set up. */
+export function linkingState(account: Account) {
+  return {
+    hasEmail: !!account.email,
+    hasDiscord: !!account.discordId,
+    hasPasskey: (account.passkeys ?? []).length > 0,
+  };
 }
 
 // ── sessions ───────────────────────────────────────────────────────────────
@@ -290,6 +387,9 @@ export function publicProfile(account: Account) {
     roles: account.roles,
     isMember: isMember(account),
     isSteward: isSteward(account),
+    hasEmail: !!account.email,
+    hasDiscord: !!account.discordId,
+    hasPasskey: (account.passkeys ?? []).length > 0,
   };
 }
 

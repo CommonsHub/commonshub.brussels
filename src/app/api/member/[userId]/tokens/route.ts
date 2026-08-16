@@ -15,6 +15,7 @@ import {
 } from "@/lib/wallet-address-cache"
 import settings from "@/settings/settings.json"
 import { DATA_DIR } from "@/lib/data-paths"
+import { balanceOf } from "@/modules/payments/tokens"
 
 interface MonthlyActivity {
   month: string // YYYY-MM format
@@ -133,13 +134,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ user
     const token = settings.contributionToken
     const apiKey = process.env.ETHERSCAN_API_KEY || ""
 
-    // Fetch token balance and transfers
+    // The balance comes straight from the chain: it is the authoritative
+    // answer, it needs no API key, and it cannot silently read zero because an
+    // explorer rate-limited us. The explorer is still what gives us history.
     const [balanceData, transfersData] = await Promise.all([
-      fetchTokenBalance(token.chainId, token.address, walletAddress, apiKey),
-      fetchTokenTransfers(token.chainId, token.address, walletAddress, apiKey),
+      balanceOf(walletAddress as `0x${string}`).catch((error) => {
+        console.error("[tokens] chain balance failed, falling back to the explorer:", error)
+        return null
+      }),
+      fetchTokenTransfers(token.chainId, token.address, walletAddress, apiKey).catch((error) => {
+        console.error("[tokens] could not fetch transfers:", error)
+        return { result: [] }
+      }),
     ])
 
-    const balance = balanceData.status === "1" ? parseTokenBalance(balanceData.result, token.decimals) : 0
+    let balance = balanceData
+    if (balance === null) {
+      const fallback = await fetchTokenBalance(
+        token.chainId,
+        token.address,
+        walletAddress,
+        apiKey,
+      ).catch(() => null)
+      balance = fallback?.status === "1" ? parseTokenBalance(fallback.result, token.decimals) : 0
+    }
     const transfers = Array.isArray(transfersData.result) ? transfersData.result : []
     console.log(`[v0] tokens API: balance=${balance} transfers count=${transfers.length}`)
 

@@ -10,6 +10,19 @@ import { identityDir } from "./crypto";
 
 export type Role = "guest" | "member" | "steward";
 
+/** A passkey registered on one of someone's devices. */
+export interface Passkey {
+  /** Base64url credential id. */
+  id: string;
+  publicKey: string;
+  counter: number;
+  transports?: string[];
+  /** What the person will recognise it by, e.g. "iPhone". */
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 export interface Account {
   id: string;
   /** Lowercased. Present for email sign-ins and for Discord accounts that share one. */
@@ -21,6 +34,9 @@ export interface Account {
   /** The public half — this is what shows up as the author of what you sign. */
   pubkey: string;
   roles: Role[];
+  passkeys: Passkey[];
+  /** Set when this account was folded into another; reads follow the pointer. */
+  mergedInto?: string;
   createdAt: string;
   lastSeenAt: string;
 }
@@ -46,13 +62,22 @@ export interface PendingEmailLogin {
   expiresAt: string;
 }
 
+/** A WebAuthn challenge, held for the browser that asked for it. */
+export interface PendingChallenge {
+  sessionPubkey: string;
+  challenge: string;
+  purpose: "register" | "login";
+  expiresAt: string;
+}
+
 interface Db {
   accounts: Account[];
   sessions: Session[];
   pending: PendingEmailLogin[];
+  challenges: PendingChallenge[];
 }
 
-const EMPTY: Db = { accounts: [], sessions: [], pending: [] };
+const EMPTY: Db = { accounts: [], sessions: [], pending: [], challenges: [] };
 
 function dbPath(): string {
   return path.join(identityDir(), "identity.json");
@@ -64,9 +89,11 @@ function read(): Db {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as Partial<Db>;
     return {
-      accounts: parsed.accounts ?? [],
+      // Accounts written before passkeys existed have no list; give them one.
+      accounts: (parsed.accounts ?? []).map((a) => ({ ...a, passkeys: a.passkeys ?? [] })),
       sessions: parsed.sessions ?? [],
       pending: parsed.pending ?? [],
+      challenges: parsed.challenges ?? [],
     };
   } catch (error) {
     console.error("[identity] could not read the store:", error);
@@ -92,17 +119,67 @@ function mutate<T>(fn: (db: Db) => T): T {
 
 // ── accounts ───────────────────────────────────────────────────────────────
 
+/** Follow the merge pointer, so an old id keeps resolving to the live account. */
+function resolve(db: Db, account: Account | undefined): Account | null {
+  let current = account;
+  const seen = new Set<string>();
+  while (current?.mergedInto && !seen.has(current.id)) {
+    seen.add(current.id);
+    current = db.accounts.find((a) => a.id === current!.mergedInto);
+  }
+  return current ?? null;
+}
+
 export function findAccountByEmail(email: string): Account | null {
+  const db = read();
   const needle = email.trim().toLowerCase();
-  return read().accounts.find((a) => a.email === needle) ?? null;
+  return resolve(db, db.accounts.find((a) => a.email === needle && !a.mergedInto));
 }
 
 export function findAccountByDiscordId(discordId: string): Account | null {
-  return read().accounts.find((a) => a.discordId === discordId) ?? null;
+  const db = read();
+  return resolve(db, db.accounts.find((a) => a.discordId === discordId && !a.mergedInto));
 }
 
 export function findAccount(id: string): Account | null {
-  return read().accounts.find((a) => a.id === id) ?? null;
+  const db = read();
+  return resolve(db, db.accounts.find((a) => a.id === id));
+}
+
+export function findAccountByPasskey(credentialId: string): Account | null {
+  const db = read();
+  return resolve(db, db.accounts.find((a) => a.passkeys?.some((p) => p.id === credentialId)));
+}
+
+/**
+ * Fold one account into another — what happens when someone signs in with an
+ * email and then connects a Discord account that already had one here. The
+ * primary keeps everything; the secondary becomes a pointer, so anything that
+ * referenced it (a proposal, a comment, an open session) still resolves.
+ */
+export function mergeAccounts(primaryId: string, secondaryId: string): Account | null {
+  return mutate((db) => {
+    const primary = db.accounts.find((a) => a.id === primaryId);
+    const secondary = db.accounts.find((a) => a.id === secondaryId);
+    if (!primary || !secondary || primary.id === secondary.id) return primary ?? null;
+
+    primary.email = primary.email ?? secondary.email;
+    primary.discordId = primary.discordId ?? secondary.discordId;
+    primary.roles = Array.from(new Set([...primary.roles, ...secondary.roles]));
+    primary.passkeys = [...(primary.passkeys ?? []), ...(secondary.passkeys ?? [])];
+
+    secondary.mergedInto = primary.id;
+    secondary.email = null;
+    secondary.discordId = null;
+    secondary.passkeys = [];
+
+    // Sessions opened against the secondary keep working, on the primary.
+    for (const session of db.sessions) {
+      if (session.accountId === secondary.id) session.accountId = primary.id;
+    }
+
+    return primary;
+  });
 }
 
 export function saveAccount(account: Account): Account {
@@ -197,5 +274,53 @@ export function countFailedAttempt(id: string): number {
 export function deletePendingLogin(id: string): void {
   mutate((db) => {
     db.pending = db.pending.filter((p) => p.id !== id);
+  });
+}
+
+// ── passkey challenges ─────────────────────────────────────────────────────
+
+export function saveChallenge(challenge: PendingChallenge): void {
+  mutate((db) => {
+    const now = Date.now();
+    db.challenges = db.challenges.filter(
+      (c) =>
+        new Date(c.expiresAt).getTime() > now &&
+        !(c.sessionPubkey === challenge.sessionPubkey && c.purpose === challenge.purpose),
+    );
+    db.challenges.push(challenge);
+  });
+}
+
+/** Challenges are single use: reading one consumes it. */
+export function takeChallenge(
+  sessionPubkey: string,
+  purpose: PendingChallenge["purpose"],
+): string | null {
+  return mutate((db) => {
+    const index = db.challenges.findIndex(
+      (c) => c.sessionPubkey === sessionPubkey && c.purpose === purpose,
+    );
+    if (index < 0) return null;
+    const [challenge] = db.challenges.splice(index, 1);
+    if (new Date(challenge.expiresAt).getTime() < Date.now()) return null;
+    return challenge.challenge;
+  });
+}
+
+export function addPasskey(accountId: string, passkey: Passkey): void {
+  mutate((db) => {
+    const account = db.accounts.find((a) => a.id === accountId);
+    if (!account) return;
+    account.passkeys = [...(account.passkeys ?? []).filter((p) => p.id !== passkey.id), passkey];
+  });
+}
+
+export function touchPasskey(accountId: string, credentialId: string, counter: number): void {
+  mutate((db) => {
+    const account = db.accounts.find((a) => a.id === accountId);
+    const passkey = account?.passkeys?.find((p) => p.id === credentialId);
+    if (!passkey) return;
+    passkey.counter = counter;
+    passkey.lastUsedAt = new Date().toISOString();
   });
 }

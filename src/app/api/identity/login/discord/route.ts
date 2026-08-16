@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import {
+  linkDiscordToAccount,
   openSession,
   publicProfile,
   SESSION_COOKIE,
   upsertDiscordAccount,
 } from "@/modules/identity/service";
+import { currentCaller } from "@/modules/identity/server";
 
 const schema = z.object({
   sessionPubkey: z.string().regex(/^[0-9a-f]{64}$/),
@@ -40,12 +42,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This session could not be identified." }, { status: 400 });
   }
 
-  const account = upsertDiscordAccount({
+  const profile = {
     discordId: user.discordId,
     username: user.username || user.name || "Someone",
     email: user.email ?? null,
     roleNames: (user.roleDetails ?? []).map((role) => role.name),
-  });
+  };
+
+  // Already signed in — say by email — so connect Discord to that account
+  // rather than starting a second one for the same person.
+  const caller = await currentCaller();
+  let account;
+  if (caller) {
+    const linked = linkDiscordToAccount(caller.account.id, profile);
+    if (!linked.ok) return NextResponse.json({ error: linked.error }, { status: 409 });
+    account = linked.account;
+  } else {
+    account = upsertDiscordAccount(profile);
+  }
 
   const opened = openSession(
     account,

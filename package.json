@@ -49,6 +49,8 @@
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@react-email/render": "latest",
+    "@simplewebauthn/browser": "13.3.0",
+    "@simplewebauthn/server": "13.3.2",
     "@vercel/analytics": "latest",
     "@vitest/browser-playwright": "latest",
     "@vitest/browser-preview": "latest",

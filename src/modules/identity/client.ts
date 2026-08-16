@@ -76,6 +76,84 @@ export interface Me {
   roles: string[];
   isMember: boolean;
   isSteward: boolean;
+  hasEmail: boolean;
+  hasDiscord: boolean;
+  hasPasskey: boolean;
+}
+
+// ── passkeys ───────────────────────────────────────────────────────────────
+
+/** Does this browser do passkeys at all? */
+export function passkeysSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.PublicKeyCredential !== "undefined" &&
+    typeof navigator.credentials?.create === "function"
+  );
+}
+
+/** Set one up for the account that is signed in. */
+export async function registerPasskey(): Promise<string> {
+  const { startRegistration } = await import("@simplewebauthn/browser");
+  const pubkey = sessionPubkey();
+
+  const optionsResponse = await fetch("/api/identity/passkey/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionPubkey: pubkey }),
+  });
+  const optionsData = await optionsResponse.json();
+  if (!optionsResponse.ok) throw new Error(optionsData?.error || "We could not start that.");
+
+  const response = await startRegistration({ optionsJSON: optionsData.options });
+
+  const verifyResponse = await fetch("/api/identity/passkey/register", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionPubkey: pubkey, response }),
+  });
+  const verified = await verifyResponse.json();
+  if (!verifyResponse.ok) throw new Error(verified?.error || "That passkey did not save.");
+  return verified.label as string;
+}
+
+/** Sign in with whatever passkey this browser holds for the hub. */
+export async function signInWithPasskey(): Promise<Me> {
+  const { startAuthentication } = await import("@simplewebauthn/browser");
+  const pubkey = sessionPubkey();
+
+  const optionsResponse = await fetch("/api/identity/passkey/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionPubkey: pubkey }),
+  });
+  const optionsData = await optionsResponse.json();
+  if (!optionsResponse.ok) throw new Error(optionsData?.error || "We could not start that.");
+
+  const response = await startAuthentication({ optionsJSON: optionsData.options });
+
+  const verifyResponse = await fetch("/api/identity/passkey/login", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionPubkey: pubkey, response }),
+  });
+  const verified = await verifyResponse.json();
+  if (!verifyResponse.ok) throw new Error(verified?.error || "That passkey did not work.");
+  return verified.account as Me;
+}
+
+// ── linking ────────────────────────────────────────────────────────────────
+
+/** Add an email address to an account that came in through Discord. */
+export async function linkEmail(email: string, code: string): Promise<Me> {
+  const response = await fetch("/api/identity/link/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code, sessionPubkey: sessionPubkey() }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || "We could not link that address.");
+  return data.account as Me;
 }
 
 export async function fetchMe(): Promise<Me | null> {
