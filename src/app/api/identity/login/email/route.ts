@@ -26,6 +26,11 @@ export async function POST(request: Request) {
   url.searchParams.set("token", token);
   if (next) url.searchParams.set("next", next);
 
+  if (!process.env.RESEND_API_KEY) {
+    // Nowhere to send it: log it so a deployment without email is still usable.
+    console.info(`[identity] sign-in link for ${email}: ${url.toString()}`);
+  }
+
   await sendEmail({
     to: email,
     subject: "Your sign-in link for Commons Hub",
