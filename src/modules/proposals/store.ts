@@ -229,27 +229,43 @@ export function getProposal(idOrSlugOrNumber: string): Proposal | null {
 }
 
 /**
- * Give a number to anything written before proposals had one, oldest first, so
- * the numbering still reads as the order they were proposed in.
+ * Bring older records up to date: give a number to anything written before
+ * proposals had one (oldest first, so the numbering still reads as the order
+ * they were proposed in), and a readable event URL to anything still carrying
+ * the old random-suffix slug.
  */
-export function numberUnnumbered(): void {
-  const unnumbered = listProposalIds()
+export function tidyLegacyUrls(): void {
+  const all = listProposalIds()
     .map((id) => project(readLog(id)))
-    .filter((p): p is Proposal => p !== null && !p.number)
+    .filter((p): p is Proposal => p !== null)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 
-  for (const proposal of unnumbered) {
-    const number = nextNumber();
+  const takenSlugs = new Set(all.map((p) => p.eventSlug));
+
+  for (const proposal of all) {
     const base = slugify(proposal.title) || "event";
+    const number = proposal.number || nextNumber();
+    const wanted = takenSlugs.has(base) && proposal.eventSlug !== base ? `${base}-${number}` : base;
+
+    const needsNumber = !proposal.number;
+    const needsSlug = proposal.eventSlug !== wanted;
+    if (!needsNumber && !needsSlug) continue;
+
+    takenSlugs.delete(proposal.eventSlug);
+    takenSlugs.add(wanted);
+
     appendEvent(proposal.id, {
       type: "numbered",
       at: new Date().toISOString(),
       number,
       slug: `${number}-${base}`,
-      eventSlug: base,
+      eventSlug: wanted,
     });
   }
 }
+
+/** @deprecated use tidyLegacyUrls */
+export const numberUnnumbered = tidyLegacyUrls;
 
 export function listProposals(options?: { includeDrafts?: boolean }): Proposal[] {
   const all = listProposalIds()

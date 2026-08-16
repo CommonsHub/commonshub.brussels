@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { listProposals, numberUnnumbered, progressFor } from "@/modules/proposals/store";
+import { listProposals, progressFor, tidyLegacyUrls } from "@/modules/proposals/store";
 import { formatEur, formatTokens, getRoom } from "@/modules/proposals/funding";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { statusLabel, statusTone } from "@/components/proposals/status";
@@ -28,7 +28,7 @@ function formatSlot(slot: { date: string; start: string; duration: number }): st
 }
 
 export default async function ProposalsPage() {
-  numberUnnumbered();
+  tidyLegacyUrls();
   const proposals = listProposals();
 
   return (
