@@ -12,7 +12,8 @@ const customJestConfig = {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
   transformIgnorePatterns: [
-    "node_modules/(?!(next-auth)/)",
+    // nostr-tools and its @noble/@scure dependencies ship ESM only
+    "node_modules/(?!(next-auth|nostr-tools|@noble|@scure)/)",
   ],
   // Default to node environment for server-side tests
   // React component tests (.tsx) should add @jest-environment jsdom at the top

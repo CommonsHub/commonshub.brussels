@@ -1,4 +1,5 @@
 import { Hero } from "@/components/hero"
+import { EventFork } from "@/components/event-fork"
 import { AboutSection } from "@/components/about-section"
 import { EventsSection } from "@/components/events-section"
 import { BookingSection } from "@/components/booking-section"
@@ -21,6 +22,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen">
       <Hero />
+      <EventFork />
       <AboutSection />
       <EventsSection />
       <BookingSection />
