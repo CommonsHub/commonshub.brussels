@@ -8,5 +8,5 @@ export default async function ShortLinkPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const proposal = getProposal(id);
   if (!proposal) notFound();
-  redirect(`/events/proposals/${proposal.slug}`);
+  redirect(`/proposals/${proposal.number}`);
 }

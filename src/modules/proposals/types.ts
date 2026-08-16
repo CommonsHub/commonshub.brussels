@@ -116,9 +116,12 @@ export interface Revision {
 
 export interface Proposal {
   id: string;
-  /** Human-facing, incremental: proposal #7. Also the short URL. */
+  /** Human-facing, incremental: proposal #7, at /proposals/7. */
   number: number;
+  /** Kept for links written before numbers existed. */
   slug: string;
+  /** The event's own URL: /events/repair-cafe. */
+  eventSlug: string;
   version: number;
   status: ProposalStatus;
 

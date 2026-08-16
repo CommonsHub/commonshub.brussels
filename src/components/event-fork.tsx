@@ -42,11 +42,11 @@ export function EventFork() {
               </Button>
               <p className="text-sm text-muted-foreground text-center">
                 {open.length > 0 ? (
-                  <Link href="/events/proposals" className="hover:text-primary">
+                  <Link href="/proposals" className="hover:text-primary">
                     {open.length} {open.length === 1 ? "proposal is" : "proposals are"} open right now
                   </Link>
                 ) : (
-                  <Link href="/events/proposals" className="hover:text-primary">
+                  <Link href="/proposals" className="hover:text-primary">
                     See what has been proposed
                   </Link>
                 )}

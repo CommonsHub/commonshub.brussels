@@ -73,7 +73,7 @@ export default async function ProposalsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1 min-w-0">
                         <Link
-                          href={`/events/proposals/${proposal.slug}`}
+                          href={`/proposals/${proposal.number}`}
                           className="text-lg font-semibold hover:text-primary"
                         >
                           <span className="text-muted-foreground font-normal">

@@ -11,7 +11,7 @@
 import { createPublicClient, http, parseAbi, formatUnits, parseUnits, type Address } from "viem";
 import { celo } from "viem/chains";
 import settings from "@/settings/settings.json";
-import { proposalAddressOrNull, walletsConfigured } from "./proposal-wallet";
+import { predictSafeAddress, safesConfigured } from "./safe";
 
 const token = settings.contributionToken as {
   chain: string;
@@ -35,7 +35,7 @@ export function hubTokenAccount(): Address | null {
 }
 
 export function tokensConfigured(): boolean {
-  return hubTokenAccount() !== null || walletsConfigured();
+  return hubTokenAccount() !== null || safesConfigured();
 }
 
 const client = createPublicClient({
@@ -147,16 +147,27 @@ export interface TokenPaymentRequest {
 }
 
 /**
- * Where a proposal collects: its own wallet, so what it holds is verifiable on
- * chain and a refund is simply sending it back out again.
+ * Where a proposal collects: its own Safe. The address exists before the
+ * contract does, so people can pay into it from the start and the Safe is only
+ * deployed when the money has to move.
  */
-export function collectingAddress(proposalId: string): Address | null {
-  return proposalAddressOrNull(proposalId) ?? hubTokenAccount();
+export async function collectingAddress(proposalId: string): Promise<Address | null> {
+  if (safesConfigured()) {
+    try {
+      return await predictSafeAddress(proposalId);
+    } catch (error) {
+      console.error("[tokens] could not work out the Safe address:", error);
+    }
+  }
+  return hubTokenAccount();
 }
 
-export function buildPaymentRequest(base: number, proposalId: string): TokenPaymentRequest {
+export async function buildPaymentRequest(
+  base: number,
+  proposalId: string,
+): Promise<TokenPaymentRequest> {
   const amount = requestAmount(base);
-  const account = collectingAddress(proposalId);
+  const account = await collectingAddress(proposalId);
   return {
     amount,
     account,
@@ -183,7 +194,7 @@ export async function findIncomingTransfer(
   options?: { withinBlocks?: bigint; proposalId?: string },
 ): Promise<TransferMatch> {
   const account = options?.proposalId
-    ? collectingAddress(options.proposalId)
+    ? await collectingAddress(options.proposalId)
     : hubTokenAccount();
   if (!account) return { found: false };
 

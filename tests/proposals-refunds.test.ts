@@ -4,7 +4,7 @@ import * as path from "path";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chb-refunds-"));
 process.env.PROPOSALS_DIR = dir;
-process.env.PROPOSAL_WALLET_SEED = "f".repeat(64);
+process.env.PROPOSAL_SIGNER_KEY = "1".repeat(64);
 
 import {
   addContribution,
@@ -13,7 +13,7 @@ import {
   recordRefunds,
   timelineFor,
 } from "@/modules/proposals/store";
-import { proposalAddress, walletsConfigured } from "@/modules/payments/proposal-wallet";
+import { safeOwners, safesConfigured, saltNonce, SAFE_THRESHOLD } from "@/modules/payments/safe";
 import type { Refund } from "@/modules/proposals/types";
 
 const author = { id: "acc_1", name: "Ana" };
@@ -61,16 +61,43 @@ describe("proposal numbers", () => {
   });
 });
 
-describe("the wallet a proposal collects into", () => {
-  it("is derived, so the same proposal always has the same address", () => {
-    expect(walletsConfigured()).toBe(true);
-    const address = proposalAddress("abc123");
-    expect(address).toMatch(/^0x[a-fA-F0-9]{40}$/);
-    expect(proposalAddress("abc123")).toBe(address);
+describe("the Safe a proposal collects into", () => {
+  it("is owned by the server signer, and one signature is enough", () => {
+    expect(safesConfigured()).toBe(true);
+    const owners = safeOwners();
+    expect(owners).toHaveLength(1);
+    expect(owners[0]).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(SAFE_THRESHOLD).toBe(1);
   });
 
-  it("is different for every proposal", () => {
-    expect(proposalAddress("abc123")).not.toBe(proposalAddress("abc124"));
+  it("becomes 1-of-2 when a second owner is configured", () => {
+    const second = "0x1111111111111111111111111111111111111111";
+    process.env.SAFE_SECOND_OWNER = second;
+    try {
+      const owners = safeOwners();
+      expect(owners).toHaveLength(2);
+      expect(owners[1].toLowerCase()).toBe(second);
+      // Still a threshold of one: the server can act alone, the human can too.
+      expect(SAFE_THRESHOLD).toBe(1);
+    } finally {
+      delete process.env.SAFE_SECOND_OWNER;
+    }
+  });
+
+  it("salts the address with the proposal, deterministically", () => {
+    const salt = saltNonce("abc123");
+    expect(salt).toBe(saltNonce("abc123"));
+    expect(salt).not.toBe(saltNonce("abc124"));
+    expect(salt > BigInt(0)).toBe(true);
+  });
+
+  it("ignores a second owner that is the signer itself", () => {
+    process.env.SAFE_SECOND_OWNER = safeOwners()[0];
+    try {
+      expect(safeOwners()).toHaveLength(1);
+    } finally {
+      delete process.env.SAFE_SECOND_OWNER;
+    }
   });
 });
 

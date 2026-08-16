@@ -45,7 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         { status: 503 },
       );
     }
-    return NextResponse.json({ tokenRequest: buildPaymentRequest(amount, proposal.id) });
+    return NextResponse.json({ tokenRequest: await buildPaymentRequest(amount, proposal.id) });
   }
 
   if (!stripeConfigured()) {
@@ -65,7 +65,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     contributorId: caller.account.id,
     contributorEmail: caller.account.email,
     successUrl: `${origin}/api/proposals/${proposal.id}/contribute/return?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${origin}/events/proposals/${proposal.slug}?payment=cancelled`,
+    cancelUrl: `${origin}/proposals/${proposal.number}?payment=cancelled`,
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 });

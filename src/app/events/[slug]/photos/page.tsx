@@ -38,9 +38,9 @@ export default async function PhotosPage({ params }: { params: Promise<{ slug: s
     <div className="min-h-screen py-12">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div>
-          <Link href={`/events/proposals/${proposal.slug}`}>
+          <Link href={`/events/${proposal.eventSlug}`}>
             <Button variant="ghost" size="sm" className="gap-2 mb-4">
-              <ArrowLeft className="w-4 h-4" /> Back to the proposal
+              <ArrowLeft className="w-4 h-4" /> Back to the event
             </Button>
           </Link>
           <h1 className="text-3xl font-bold">Photos</h1>

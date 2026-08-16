@@ -124,7 +124,7 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "That did not go through.");
-      router.push(`/events/proposals/${data.proposal.slug}`);
+      router.push(`/proposals/${data.proposal.number}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That did not go through.");
       setSubmitting(false);

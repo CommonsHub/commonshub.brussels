@@ -11,8 +11,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const proposal = getProposal(id);
 
-  if (!proposal) return NextResponse.redirect(new URL("/events/proposals", url.origin));
-  const proposalUrl = new URL(`/events/proposals/${proposal.slug}`, url.origin);
+  if (!proposal) return NextResponse.redirect(new URL("/proposals", url.origin));
+  const proposalUrl = new URL(`/proposals/${proposal.number}`, url.origin);
 
   if (!sessionId) {
     proposalUrl.searchParams.set("payment", "unknown");

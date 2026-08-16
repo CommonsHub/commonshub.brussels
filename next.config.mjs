@@ -37,6 +37,19 @@ const gitInfo = getGitInfo();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Proposals moved to /proposals/:id so that one day they can be about
+  // something other than events. Links already shared keep working.
+  async redirects() {
+    return [
+      { source: '/events/proposals', destination: '/proposals', permanent: true },
+      { source: '/events/proposals/:slug', destination: '/proposals/:slug', permanent: true },
+      {
+        source: '/events/proposals/:slug/photos',
+        destination: '/events/:slug/photos',
+        permanent: true,
+      },
+    ]
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

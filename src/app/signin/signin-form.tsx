@@ -27,7 +27,7 @@ type Stage = "email" | "code" | "finish";
 export function SignInForm() {
   const params = useSearchParams();
   const router = useRouter();
-  const next = params.get("next") || "/events/proposals";
+  const next = params.get("next") || "/proposals";
   const linking = params.get("link") === "1";
 
   const [stage, setStage] = useState<Stage>("email");

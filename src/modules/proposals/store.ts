@@ -48,7 +48,7 @@ export type ProposalEvent =
   | { type: "rsvped"; at: string; rsvp: Rsvp }
   | { type: "tasklist_linked"; at: string; taskListId: string }
   | { type: "refunded"; at: string; refunds: Refund[]; note?: string }
-  | { type: "numbered"; at: string; number: number; slug: string }
+  | { type: "numbered"; at: string; number: number; slug: string; eventSlug?: string }
   | {
       type: "status_changed";
       at: string;
@@ -104,6 +104,7 @@ function project(events: ProposalEvent[]): Proposal | null {
     ...first.proposal,
     refunds: first.proposal.refunds ?? [],
     number: first.proposal.number ?? 0,
+    eventSlug: first.proposal.eventSlug ?? first.proposal.slug,
   };
 
   for (const event of events.slice(1)) {
@@ -150,7 +151,12 @@ function project(events: ProposalEvent[]): Proposal | null {
         proposal = { ...proposal, refunds: [...proposal.refunds, ...event.refunds] };
         break;
       case "numbered":
-        proposal = { ...proposal, number: event.number, slug: event.slug };
+        proposal = {
+          ...proposal,
+          number: event.number,
+          slug: event.slug,
+          eventSlug: event.eventSlug ?? proposal.eventSlug,
+        };
         break;
       case "status_changed":
         proposal = {
@@ -216,6 +222,7 @@ export function getProposal(idOrSlugOrNumber: string): Proposal | null {
     const proposal = project(readLog(id));
     if (!proposal) continue;
     if (proposal.slug === idOrSlugOrNumber) return proposal;
+    if (proposal.eventSlug === idOrSlugOrNumber) return proposal;
     if (number !== null && proposal.number === number) return proposal;
   }
   return null;
@@ -233,11 +240,13 @@ export function numberUnnumbered(): void {
 
   for (const proposal of unnumbered) {
     const number = nextNumber();
+    const base = slugify(proposal.title) || "event";
     appendEvent(proposal.id, {
       type: "numbered",
       at: new Date().toISOString(),
       number,
-      slug: `${number}-${slugify(proposal.title) || "proposal"}`,
+      slug: `${number}-${base}`,
+      eventSlug: base,
     });
   }
 }
@@ -298,10 +307,16 @@ export function createProposal(
   const now = new Date().toISOString();
   const slots: Slot[] = draft.slots.map((s, i) => ({ ...s, id: `s${i + 1}` }));
 
+  const base = slugify(draft.title) || "event";
+  const taken = listProposals({ includeDrafts: true }).some((p) => p.eventSlug === base);
+
   const proposal: Proposal = {
     id,
     number,
-    slug: `${number}-${slugify(draft.title) || "proposal"}`,
+    slug: `${number}-${base}`,
+    // A readable URL for the event; the number keeps it unique if two events
+    // end up with the same name.
+    eventSlug: taken ? `${base}-${number}` : base,
     version: 1,
     status: options?.status ?? "open",
     title: draft.title,

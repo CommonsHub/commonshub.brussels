@@ -11,10 +11,10 @@
  */
 
 import Stripe from "stripe";
-import { createPublicClient, createWalletClient, http, parseAbi, parseUnits } from "viem";
+import { createPublicClient, encodeFunctionData, http, parseAbi, parseUnits } from "viem";
 import { celo } from "viem/chains";
 import type { Contribution } from "@/modules/proposals/types";
-import { proposalAccount, walletsConfigured } from "./proposal-wallet";
+import { execFromSafe, predictSafeAddress, safesConfigured } from "./safe";
 import { TOKEN_ADDRESS, TOKEN_DECIMALS, EXPLORER_URL } from "./tokens";
 
 export interface RefundResult {
@@ -91,41 +91,37 @@ async function refundTokens(
     ok: false,
   };
 
-  if (!walletsConfigured()) {
-    return { ...base, error: "Proposal wallets are not configured here." };
+  if (!safesConfigured()) {
+    return { ...base, error: "Proposal Safes are not configured here." };
   }
   if (!contribution.fromAddress) {
     return { ...base, error: "We do not know which address that came from." };
   }
 
   try {
-    const account = proposalAccount(proposalId);
+    const safe = await predictSafeAddress(proposalId);
     const amount = parseUnits(contribution.grossAmount.toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 
     const held = await publicClient.readContract({
       address: TOKEN_ADDRESS,
       abi: erc20,
       functionName: "balanceOf",
-      args: [account.address],
+      args: [safe],
     });
     if (held < amount) {
       return { ...base, error: "This proposal no longer holds that much." };
     }
 
-    const wallet = createWalletClient({
-      account,
-      chain: celo,
-      transport: http(process.env.CELO_RPC_URL),
+    // Deploys the Safe if this is the first time money leaves it.
+    const hash = await execFromSafe({
+      proposalId,
+      to: TOKEN_ADDRESS,
+      data: encodeFunctionData({
+        abi: erc20,
+        functionName: "transfer",
+        args: [contribution.fromAddress as `0x${string}`, amount],
+      }),
     });
-
-    const hash = await wallet.writeContract({
-      address: TOKEN_ADDRESS,
-      abi: erc20,
-      functionName: "transfer",
-      args: [contribution.fromAddress as `0x${string}`, amount],
-    });
-
-    await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
 
     return {
       ...base,
@@ -140,7 +136,7 @@ async function refundTokens(
     return {
       ...base,
       error: outOfGas
-        ? "The proposal wallet has no CELO left for gas. Top it up and try again."
+        ? "The signer that pays gas has run out of CELO. Top it up and try again."
         : message,
     };
   }

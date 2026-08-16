@@ -129,7 +129,7 @@ export function ActivityLog({ items, slug }: { items: TimelineItem[]; slug: stri
             {photos > 0 && (
               <>
                 {" with "}
-                <Link href={`/events/proposals/${slug}/photos`} className="hover:text-primary">
+                <Link href={`/events/${slug}/photos`} className="hover:text-primary">
                   {photos} {photos === 1 ? "photo" : "photos"}
                 </Link>
               </>

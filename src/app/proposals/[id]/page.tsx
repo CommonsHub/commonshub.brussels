@@ -25,10 +25,10 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  const { slug } = await params;
-  const proposal = getProposal(slug);
+  const { id } = await params;
+  const proposal = getProposal(id);
   if (!proposal) return { title: "Proposal not found | Commons Hub Brussels" };
   return {
     title: `${proposal.title} | Commons Hub Brussels`,
@@ -56,9 +56,9 @@ function ago(iso: string): string {
   return "just now";
 }
 
-export default async function ProposalPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const proposal = getProposal(slug);
+export default async function ProposalPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const proposal = getProposal(id);
   if (!proposal) notFound();
 
   const funding = progressFor(proposal);
@@ -92,7 +92,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
   return (
     <div className="min-h-screen py-12">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Link href="/events/proposals">
+        <Link href="/proposals">
           <Button variant="ghost" size="sm" className="gap-2 mb-4">
             <ArrowLeft className="w-4 h-4" /> All proposals
           </Button>
@@ -105,6 +105,12 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
               #{proposal.number} · proposed by {proposal.proposerName} · {ago(proposal.createdAt)} ·
               version {proposal.version}
             </p>
+            <Link
+              href={`/events/${proposal.eventSlug}`}
+              className="text-sm text-primary hover:underline"
+            >
+              See the event page →
+            </Link>
           </div>
           <Badge variant={statusTone(proposal.status)} className="text-sm">
             {statusLabel(proposal.status)}
@@ -230,7 +236,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                   <CardTitle className="text-base">Activity</CardTitle>
                   {photoCount > 0 && (
                     <Link
-                      href={`/events/proposals/${proposal.slug}/photos`}
+                      href={`/events/${proposal.eventSlug}/photos`}
                       className="text-sm text-muted-foreground hover:text-primary"
                     >
                       {photoCount} {photoCount === 1 ? "photo" : "photos"}

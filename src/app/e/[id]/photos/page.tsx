@@ -8,5 +8,5 @@ export default async function ShortPhotosPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const proposal = getProposal(id);
   if (!proposal) notFound();
-  redirect(`/events/proposals/${proposal.slug}/photos`);
+  redirect(`/events/${proposal.eventSlug}/photos`);
 }
