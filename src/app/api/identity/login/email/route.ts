@@ -6,12 +6,7 @@ import { sendEmail } from "@/lib/services/notifications";
 const schema = z.object({
   email: z.string().email(),
   sessionPubkey: z.string().regex(/^[0-9a-f]{64}$/),
-  next: z.string().optional(),
 });
-
-function baseUrl(request: Request): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-}
 
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -19,28 +14,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "We need a valid email address." }, { status: 400 });
   }
 
-  const { email, sessionPubkey, next } = parsed.data;
-  const { token } = startEmailLogin({ email, sessionPubkey });
-
-  const url = new URL("/api/identity/verify", baseUrl(request));
-  url.searchParams.set("token", token);
-  if (next) url.searchParams.set("next", next);
+  const { email, sessionPubkey } = parsed.data;
+  const { code, expiresInMinutes } = startEmailLogin({ email, sessionPubkey });
 
   if (!process.env.RESEND_API_KEY) {
     // Nowhere to send it: log it so a deployment without email is still usable.
-    console.info(`[identity] sign-in link for ${email}: ${url.toString()}`);
+    console.info(`[identity] sign-in code for ${email}: ${code}`);
   }
 
   await sendEmail({
     to: email,
-    subject: "Your sign-in link for Commons Hub",
+    subject: `${code} is your Commons Hub code`,
     html: `
-      <p>Here is your sign-in link for the Commons Hub:</p>
-      <p><a href="${url.toString()}">Sign in</a></p>
-      <p>It works once, in the browser you asked from, and expires in 30 minutes.
-      If you did not ask for it, you can ignore this email.</p>
+      <p>Your sign-in code for the Commons Hub:</p>
+      <p style="font-size:32px;font-weight:600;letter-spacing:6px;margin:16px 0">${code}</p>
+      <p>Type it in the tab you asked from. It works there only, and expires in
+      ${expiresInMinutes} minutes. If you did not ask for it, you can ignore this email.</p>
     `,
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, expiresInMinutes });
 }

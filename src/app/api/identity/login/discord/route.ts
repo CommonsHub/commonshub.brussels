@@ -19,8 +19,19 @@ const schema = z.object({
  */
 export async function POST(request: Request) {
   const session = await auth();
-  const discordId = (session as { discordId?: string } | null)?.discordId;
-  if (!session || !discordId) {
+  // The Discord details hang off session.user — see the session callback in auth.ts.
+  const user = session?.user as
+    | {
+        discordId?: string;
+        username?: string;
+        name?: string | null;
+        email?: string | null;
+        roleDetails?: Array<{ id: string; name: string }>;
+      }
+    | undefined;
+
+  if (!user?.discordId) {
+    console.warn("[identity] Discord link attempted without a Discord session");
     return NextResponse.json({ error: "Sign in with Discord first." }, { status: 401 });
   }
 
@@ -29,18 +40,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This session could not be identified." }, { status: 400 });
   }
 
-  const profile = session as {
-    discordId?: string;
-    username?: string;
-    roleNames?: string[];
-    user?: { name?: string | null; email?: string | null };
-  };
-
   const account = upsertDiscordAccount({
-    discordId,
-    username: profile.username || profile.user?.name || "Someone",
-    email: profile.user?.email ?? null,
-    roleNames: profile.roleNames ?? [],
+    discordId: user.discordId,
+    username: user.username || user.name || "Someone",
+    email: user.email ?? null,
+    roleNames: (user.roleDetails ?? []).map((role) => role.name),
   });
 
   const opened = openSession(

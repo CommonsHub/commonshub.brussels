@@ -11,23 +11,28 @@
 
 import type { EventTemplate, Event } from "nostr-tools/pure";
 import {
+  codeMatches,
   hashBody,
+  hashCode,
   newAccountKey,
+  randomCode,
   randomToken,
   signWithAccountKey,
   verifySessionEnvelope,
 } from "./crypto";
 import {
+  countFailedAttempt,
+  deletePendingLogin,
   deleteSession,
   findAccount,
   findAccountByDiscordId,
   findAccountByEmail,
+  findPendingLogin,
   findSession,
   findSessionByPubkey,
   savePendingLogin,
   saveAccount,
   saveSession,
-  takePendingLogin,
   touchAccount,
   type Account,
   type Role,
@@ -36,7 +41,8 @@ import {
 
 export const SESSION_COOKIE = "chb_session";
 const SESSION_TTL_DAYS = 30;
-const EMAIL_LINK_TTL_MINUTES = 30;
+const CODE_TTL_MINUTES = 10;
+const MAX_CODE_ATTEMPTS = 5;
 
 function accountId(): string {
   return `acc_${randomToken().slice(0, 16)}`;
@@ -81,31 +87,67 @@ export interface EmailLoginRequest {
 }
 
 /**
- * Step one: remember which browser asked, and hand back a token to email.
- * The account itself is only created once the link is clicked, so an address
- * someone typed by mistake never becomes an account.
+ * Step one: issue a six-digit code for this browser and hand it back to be
+ * emailed. The account itself is only created once the code is entered, so an
+ * address someone typed by mistake never becomes an account.
  */
-export function startEmailLogin(request: EmailLoginRequest): { token: string } {
-  const token = randomToken();
+export function startEmailLogin(request: EmailLoginRequest): {
+  code: string;
+  expiresInMinutes: number;
+} {
+  const code = randomCode();
   const now = Date.now();
   savePendingLogin({
-    token,
+    id: `pen_${randomToken().slice(0, 16)}`,
     email: request.email.trim().toLowerCase(),
+    codeHash: hashCode(code, request.sessionPubkey),
     sessionPubkey: request.sessionPubkey,
+    attempts: 0,
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + EMAIL_LINK_TTL_MINUTES * 60_000).toISOString(),
+    expiresAt: new Date(now + CODE_TTL_MINUTES * 60_000).toISOString(),
   });
-  return { token };
+  return { code, expiresInMinutes: CODE_TTL_MINUTES };
 }
 
-/** Step two: the link was clicked. Create the account if new, open the session. */
-export function completeEmailLogin(token: string): { account: Account; session: Session } | null {
-  const pending = takePendingLogin(token);
-  if (!pending) return null;
+export type EmailCodeResult =
+  | { ok: true; account: Account; session: Session }
+  | { ok: false; error: string };
 
-  const account = findAccountByEmail(pending.email) ?? saveAccount(newAccount({ email: pending.email }));
-  const session = openSession(account, pending.sessionPubkey);
-  return { account, session };
+/**
+ * Step two: the code was typed in. It only works in the browser that asked for
+ * it, for ten minutes, and five wrong guesses burn it — six digits are easy to
+ * type and easy to guess, so the attempts are what make them safe.
+ */
+export function completeEmailLogin(request: {
+  email: string;
+  code: string;
+  sessionPubkey: string;
+}): EmailCodeResult {
+  const email = request.email.trim().toLowerCase();
+  const code = request.code.replace(/\D/g, "");
+  const pending = findPendingLogin(email, request.sessionPubkey);
+
+  if (!pending) {
+    return { ok: false, error: "That code has expired. Ask for a new one." };
+  }
+
+  if (!codeMatches(code, request.sessionPubkey, pending.codeHash)) {
+    const attempts = countFailedAttempt(pending.id);
+    if (attempts >= MAX_CODE_ATTEMPTS) {
+      deletePendingLogin(pending.id);
+      return { ok: false, error: "Too many tries. Ask for a new code." };
+    }
+    const left = MAX_CODE_ATTEMPTS - attempts;
+    return {
+      ok: false,
+      error: `That code is not right. ${left} ${left === 1 ? "try" : "tries"} left.`,
+    };
+  }
+
+  deletePendingLogin(pending.id);
+  const account = findAccountByEmail(email) ?? saveAccount(newAccount({ email }));
+  const session = openSession(account, request.sessionPubkey);
+  return { ok: true, account, session };
 }
 
 // ── sign in with Discord ───────────────────────────────────────────────────

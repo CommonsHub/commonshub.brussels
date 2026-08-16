@@ -27,10 +27,12 @@ browser                                  server
    │  generate session key (stays here)
    │
    │  POST /api/identity/login/email  { email, sessionPubkey }
-   │ ─────────────────────────────────────────►  remember the pending link
-   │                                             email a one-time link
-   │  click the link
-   │  GET /api/identity/verify?token=…
+   │ ─────────────────────────────────────────►  issue a six-digit code,
+   │                                             store it hashed + salted with
+   │                                             the session, email it
+   │  type the code
+   │  POST /api/identity/login/email/verify
+   │        { email, code, sessionPubkey }
    │ ─────────────────────────────────────────►  create the account if new,
    │                                             bind session ↔ account,
    │ ◄─────────────────────────────────────────  set the session cookie
@@ -48,6 +50,17 @@ the emailed link: `POST /api/identity/login/discord` binds the browser's session
 key to the account and brings the person's Discord roles across, which is how
 stewards get their badge.
 
+## Why a code and not a link
+
+A six-digit code is easy to read off a phone and type into the tab you started
+in, and it keeps the session key that asked for it and the browser that uses it
+the same thing — a link can be clicked in a different browser, where the session
+key does not exist. Six digits are also easy to guess, so the code is bound to
+one browser and one address, expires in ten minutes, dies after five wrong
+tries, and is replaced whenever a new one is asked for. It is stored as a
+SHA-256 hash salted with the session key, so the store never holds a usable
+code.
+
 ## Why an envelope rather than just the cookie
 
 The cookie says *this browser has a session*. The envelope says *this browser
@@ -62,7 +75,7 @@ minutes.
 |---|---|
 | `IDENTITY_ENCRYPTION_KEY` | 64 hex chars. Encrypts account keys at rest. Generated into `IDENTITY_DIR/encryption.key` if unset, with a warning. |
 | `IDENTITY_DIR` | Where accounts, sessions and the key file live. Defaults to `.data/identity`. |
-| `RESEND_API_KEY` | Sends the sign-in link. Without it, links are logged instead of sent. |
+| `RESEND_API_KEY` | Sends the sign-in code. Without it, codes are logged instead of sent. |
 | `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET` | Discord sign-in, already used by the rest of the site. |
 
 ## Related work

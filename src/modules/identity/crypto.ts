@@ -129,4 +129,31 @@ export function randomToken(): string {
   return crypto.randomBytes(24).toString("base64url");
 }
 
+/** A six-digit code, uniformly drawn — no Math.random, no modulo bias. */
+export function randomCode(): string {
+  const limit = 1_000_000;
+  const max = Math.floor(0xffffffff / limit) * limit;
+  let value: number;
+  do {
+    value = crypto.randomBytes(4).readUInt32BE(0);
+  } while (value >= max);
+  return String(value % limit).padStart(6, "0");
+}
+
+/**
+ * Codes are stored hashed and salted with the session they were issued to, so
+ * the file never holds a code anyone could use, and a code only means anything
+ * to the browser that asked for it.
+ */
+export function hashCode(code: string, sessionPubkey: string): string {
+  return crypto.createHash("sha256").update(`${sessionPubkey}:${code}`).digest("hex");
+}
+
+export function codeMatches(code: string, sessionPubkey: string, expected: string): boolean {
+  const actual = Buffer.from(hashCode(code, sessionPubkey), "hex");
+  const wanted = Buffer.from(expected, "hex");
+  if (actual.length !== wanted.length) return false;
+  return crypto.timingSafeEqual(actual, wanted);
+}
+
 export { getPublicKey };

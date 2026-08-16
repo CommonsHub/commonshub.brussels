@@ -85,27 +85,45 @@ export async function fetchMe(): Promise<Me | null> {
   return data.account ?? null;
 }
 
-/** Ask for a sign-in link. The session key registered here is what it unlocks. */
-export async function requestEmailLink(email: string, next?: string): Promise<void> {
+/** Ask for a sign-in code. The session key registered here is what it unlocks. */
+export async function requestEmailCode(email: string): Promise<void> {
   const response = await fetch("/api/identity/login/email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, sessionPubkey: sessionPubkey(), next }),
+    body: JSON.stringify({ email, sessionPubkey: sessionPubkey() }),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data?.error || "We could not send that link.");
+  if (!response.ok) throw new Error(data?.error || "We could not send that code.");
 }
 
-/** After signing in with Discord, hand this browser's session key to the server. */
-export async function linkDiscordSession(): Promise<Me | null> {
+/** Hand back the code that was emailed. Only valid in this browser. */
+export async function submitEmailCode(email: string, code: string): Promise<Me> {
+  const response = await fetch("/api/identity/login/email/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code, sessionPubkey: sessionPubkey() }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || "That code did not work.");
+  return data.account as Me;
+}
+
+/**
+ * After signing in with Discord, hand this browser's session key to the server.
+ * Throws with the server's reason so the page can say what went wrong rather
+ * than spinning.
+ */
+export async function linkDiscordSession(): Promise<Me> {
   const response = await fetch("/api/identity/login/discord", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionPubkey: sessionPubkey() }),
   });
-  if (!response.ok) return null;
-  const data = await response.json();
-  return data.account ?? null;
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.account) {
+    throw new Error(data?.error || "We could not finish signing you in with Discord.");
+  }
+  return data.account as Me;
 }
 
 export async function signOut(): Promise<void> {

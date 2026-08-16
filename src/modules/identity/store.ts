@@ -36,9 +36,12 @@ export interface Session {
 }
 
 export interface PendingEmailLogin {
-  token: string;
+  id: string;
   email: string;
+  /** The code is kept hashed, salted with the session it was issued to. */
+  codeHash: string;
   sessionPubkey: string;
+  attempts: number;
   createdAt: string;
   expiresAt: string;
 }
@@ -158,17 +161,41 @@ export function deleteSession(id: string): void {
 export function savePendingLogin(pending: PendingEmailLogin): void {
   mutate((db) => {
     const now = Date.now();
-    db.pending = db.pending.filter((p) => new Date(p.expiresAt).getTime() > now);
+    db.pending = db.pending.filter(
+      (p) =>
+        new Date(p.expiresAt).getTime() > now &&
+        // One code at a time per browser: asking again replaces the old one.
+        !(p.sessionPubkey === pending.sessionPubkey && p.email === pending.email),
+    );
     db.pending.push(pending);
   });
 }
 
-export function takePendingLogin(token: string): PendingEmailLogin | null {
+/** The code someone is being asked for right now, in this browser. */
+export function findPendingLogin(
+  email: string,
+  sessionPubkey: string,
+): PendingEmailLogin | null {
+  const needle = email.trim().toLowerCase();
+  const pending = read().pending.find(
+    (p) => p.email === needle && p.sessionPubkey === sessionPubkey,
+  );
+  if (!pending) return null;
+  if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
+  return pending;
+}
+
+export function countFailedAttempt(id: string): number {
   return mutate((db) => {
-    const index = db.pending.findIndex((p) => p.token === token);
-    if (index < 0) return null;
-    const [pending] = db.pending.splice(index, 1);
-    if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
-    return pending;
+    const pending = db.pending.find((p) => p.id === id);
+    if (!pending) return 0;
+    pending.attempts += 1;
+    return pending.attempts;
+  });
+}
+
+export function deletePendingLogin(id: string): void {
+  mutate((db) => {
+    db.pending = db.pending.filter((p) => p.id !== id);
   });
 }

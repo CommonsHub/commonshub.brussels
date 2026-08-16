@@ -11,10 +11,6 @@ const customJestConfig = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  transformIgnorePatterns: [
-    // nostr-tools and its @noble/@scure dependencies ship ESM only
-    "node_modules/(?!(next-auth|nostr-tools|@noble|@scure)/)",
-  ],
   // Default to node environment for server-side tests
   // React component tests (.tsx) should add @jest-environment jsdom at the top
   testEnvironment: "node",
@@ -23,4 +19,15 @@ const customJestConfig = {
   },
 }
 
-module.exports = createJestConfig(customJestConfig)
+// next/jest installs its own transformIgnorePatterns, and the list is an OR:
+// adding a permissive pattern cannot undo a matching one. So build the config
+// first, then replace the patterns outright — nostr-tools and its @noble/@scure
+// dependencies are ESM only and have to go through the transform.
+module.exports = async () => {
+  const config = await createJestConfig(customJestConfig)()
+  config.transformIgnorePatterns = [
+    "^.+\\.module\\.(css|sass|scss)$",
+    "/node_modules/(?!(next-auth|nostr-tools|@noble|@scure)/)",
+  ]
+  return config
+}

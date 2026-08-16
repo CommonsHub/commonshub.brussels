@@ -78,6 +78,23 @@ export interface BotBalance {
 export type BalanceLookup = BotBalance | { available: false; reason: string };
 
 export async function balanceForDiscordUser(discordId: string): Promise<BalanceLookup> {
+  // The account a Discord user holds tokens in is derived from their user id,
+  // the same way the bot derives it, so we can read the balance straight off
+  // the chain without asking the bot anything.
+  try {
+    const { getAccountAddressFromDiscordUserId } = await import("@/lib/citizenwallet");
+    const address = await getAccountAddressFromDiscordUserId(discordId);
+    if (address) {
+      return {
+        available: true,
+        balance: await balanceOf(address as Address),
+        address: address as Address,
+      };
+    }
+  } catch (error) {
+    console.error("[tokens] could not resolve the account for this Discord user:", error);
+  }
+
   const base = botUrl();
   if (!base) {
     return {
