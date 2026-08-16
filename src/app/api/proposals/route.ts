@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createProposal, listProposals, progressFor, linkTaskList } from "@/modules/proposals/store";
+import {
+  createProposal,
+  getProposal,
+  linkTaskList,
+  listProposals,
+  progressFor,
+} from "@/modules/proposals/store";
 import { currentCaller } from "@/modules/identity/server";
 import { signerFor } from "@/modules/identity/service";
 import { createTaskList } from "@/modules/tasks/tasklist";
@@ -77,5 +83,7 @@ export async function POST(request: Request) {
     console.error("[proposals] could not create the task list:", error);
   }
 
-  return NextResponse.json({ proposal: { ...proposal, funding: progressFor(proposal) } });
+  // Re-read so the response carries the task list that was just linked.
+  const created = getProposal(proposal.id) ?? proposal;
+  return NextResponse.json({ proposal: { ...created, funding: progressFor(created) } });
 }
