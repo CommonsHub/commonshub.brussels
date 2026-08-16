@@ -57,6 +57,7 @@ export async function POST(request: Request) {
     await resend.emails.send({
       from: "Commons Hub Brussels <hello@commonshub.brussels>",
       to: ["hello@commonshub.brussels"],
+      replyTo: email,
       subject: `${isPrivate ? "[PRIVATE] " : ""}New Booking Request: ${roomName} - ${name}`,
       html: `
         <h2>New Booking Request</h2>

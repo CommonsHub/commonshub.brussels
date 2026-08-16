@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       from: "Commons Hub Brussels <hello@commonshub.brussels>",
       to: ["hello@commonshub.brussels"],
       cc: [email],
+      replyTo: email,
       subject: `New Contact Form: ${reasonLabel} - ${name}`,
       html: `
         <h2>New Contact Form Submission</h2>
