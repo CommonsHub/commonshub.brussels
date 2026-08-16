@@ -155,6 +155,17 @@ export function Footer() {
         </div>
 
         <div className="mt-12 pt-8 border-t border-background/20 text-center text-sm text-background/50">
+          <p className="mb-4">
+            Feel free to also come try the{" "}
+            <Link href="/coworking" className={linkClass}>
+              coworking
+            </Link>{" "}
+            and{" "}
+            <Link href="/donate" className={linkClass}>
+              make a donation
+            </Link>{" "}
+            for your use of the space.
+          </p>
           <p>
             <span className="-scale-x-100 inline-block">©</span>copyleft{" "}
             {new Date().getFullYear()} Commons Hub Brussels. Feel free to copy

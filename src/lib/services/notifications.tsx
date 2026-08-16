@@ -107,11 +107,14 @@ export async function sendRequestNotification(data: {
   type: string
   subject: string
   html: string
+  /** Email of the person who submitted the form, so a reply reaches them */
+  replyTo?: string
 }) {
   return sendEmail({
     to: settings.email.to,
     subject: data.subject,
     html: data.html,
+    replyTo: data.replyTo,
   })
 }
 

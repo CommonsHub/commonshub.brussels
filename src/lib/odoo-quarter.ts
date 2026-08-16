@@ -195,7 +195,13 @@ export function loadQuarterlyOdoo(
   const missingMonths: string[] = [];
 
   for (const month of months) {
-    const monthRoot = path.join(DATA_DIR, year, month, "finance", "odoo");
+    // chb writes the Odoo exports under providers/odoo/<org>/; the older
+    // finance/odoo layout is kept as a fallback for pre-migration datasets.
+    const providerRoot = path.join(DATA_DIR, year, month, "providers", "odoo", "commonshub");
+    const legacyRoot = path.join(DATA_DIR, year, month, "finance", "odoo");
+    const monthRoot = fs.existsSync(path.join(providerRoot, "invoices.json"))
+      ? providerRoot
+      : legacyRoot;
     const pubInv = readJson<{ invoices: PublicRecord[] }>(path.join(monthRoot, "invoices.json"));
     const prvInv = readJson<{ invoices: PrivateRecord[] }>(
       path.join(monthRoot, "private", "invoices.json"),

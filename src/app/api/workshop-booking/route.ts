@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     await resend.emails.send({
       from: "Commons Hub Brussels <hello@commonshub.brussels>",
       to: ["hello@commonshub.brussels"],
+      replyTo: email,
       subject: `Workshop Booking Request: ${workshop}`,
       html: `
         <h2>New Workshop Booking Request</h2>
