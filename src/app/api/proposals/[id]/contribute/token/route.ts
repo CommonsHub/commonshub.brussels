@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addContribution, getProposal, setRsvp } from "@/modules/proposals/store";
 import { currentCaller } from "@/modules/identity/server";
 import { findIncomingTransfer } from "@/modules/payments/tokens";
+import { maxTokenContribution } from "@/modules/payments/chain";
 import { splitTokenContribution } from "@/modules/proposals/funding";
 
 const schema = z.object({
@@ -29,6 +30,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!proposal) return NextResponse.json({ error: "That proposal is gone." }, { status: 404 });
 
   const { amount, kind, seats } = parsed.data;
+
+  const cap = maxTokenContribution();
+  if (cap !== null && amount > cap) {
+    return NextResponse.json(
+      { error: `Contributions are capped at ${cap} tokens on this deployment.` },
+      { status: 400 },
+    );
+  }
 
   let match;
   try {

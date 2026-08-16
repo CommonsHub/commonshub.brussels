@@ -8,25 +8,17 @@
  * no custody added by this module.
  */
 
-import { createPublicClient, http, parseAbi, formatUnits, parseUnits, type Address } from "viem";
-import { celo } from "viem/chains";
-import settings from "@/settings/settings.json";
+import { parseAbi, formatUnits, parseUnits, type Address } from "viem";
 import { predictSafeAddress, safesConfigured } from "./safe";
+import {
+  EXPLORER_URL,
+  TOKEN_ADDRESS,
+  TOKEN_DECIMALS,
+  TOKEN_SYMBOL,
+  publicClient as client,
+} from "./chain";
 
-const token = settings.contributionToken as {
-  chain: string;
-  chainId: number;
-  rpcUrl: string;
-  explorerUrl: string;
-  address: string;
-  name: string;
-  symbol: string;
-  decimals: number;
-};
-
-export const TOKEN_DECIMALS = token.decimals;
-export const TOKEN_ADDRESS = token.address as Address;
-export const EXPLORER_URL = token.explorerUrl;
+export { EXPLORER_URL, TOKEN_ADDRESS, TOKEN_DECIMALS, TOKEN_SYMBOL };
 
 /** Where token contributions are received. Set HUB_TOKEN_ACCOUNT to enable. */
 export function hubTokenAccount(): Address | null {
@@ -37,11 +29,6 @@ export function hubTokenAccount(): Address | null {
 export function tokensConfigured(): boolean {
   return hubTokenAccount() !== null || safesConfigured();
 }
-
-const client = createPublicClient({
-  chain: celo,
-  transport: http(token.rpcUrl),
-});
 
 const erc20 = parseAbi([
   "function balanceOf(address) view returns (uint256)",
@@ -172,7 +159,7 @@ export async function buildPaymentRequest(
     amount,
     account,
     command: account ? `/send ${amount} to ${account}` : `/send ${amount} to @CommonsHub`,
-    symbol: token.symbol,
+    symbol: TOKEN_SYMBOL,
   };
 }
 
@@ -223,5 +210,3 @@ export async function findIncomingTransfer(
     explorerUrl: `${EXPLORER_URL}/tx/${match.transactionHash}`,
   };
 }
-
-export const TOKEN_SYMBOL = token.symbol;

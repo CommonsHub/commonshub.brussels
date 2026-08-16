@@ -4,6 +4,7 @@ import { getProposal } from "@/modules/proposals/store";
 import { currentCaller } from "@/modules/identity/server";
 import { createEuroCheckout, stripeConfigured } from "@/modules/payments/euro";
 import { buildPaymentRequest, tokensConfigured } from "@/modules/payments/tokens";
+import { maxTokenContribution } from "@/modules/payments/chain";
 import { splitEuroContribution } from "@/modules/proposals/funding";
 
 const schema = z.object({
@@ -43,6 +44,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json(
         { error: "Token payments are not switched on for this deployment yet." },
         { status: 503 },
+      );
+    }
+    const cap = maxTokenContribution();
+    if (cap !== null && amount > cap) {
+      return NextResponse.json(
+        { error: `Contributions are capped at ${cap} tokens on this deployment.` },
+        { status: 400 },
       );
     }
     return NextResponse.json({ tokenRequest: await buildPaymentRequest(amount, proposal.id) });

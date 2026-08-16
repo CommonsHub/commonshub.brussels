@@ -14,7 +14,6 @@
 
 import {
   concatHex,
-  createPublicClient,
   createWalletClient,
   encodeFunctionData,
   http,
@@ -25,8 +24,8 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { celo } from "viem/chains";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { chain, publicClient, RPC_URL } from "./chain";
 
 /** Safe 1.4.1, deployed on Celo at the canonical addresses. */
 export const SAFE_PROXY_FACTORY = "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67" as Address;
@@ -47,10 +46,7 @@ const safeAbi = parseAbi([
   "function getThreshold() view returns (uint256)",
 ]);
 
-export const publicClient = createPublicClient({
-  chain: celo,
-  transport: http(process.env.CELO_RPC_URL),
-});
+export { publicClient };
 
 // ── who signs ──────────────────────────────────────────────────────────────
 
@@ -177,8 +173,8 @@ export async function isDeployed(address: Address): Promise<boolean> {
 function walletClient() {
   return createWalletClient({
     account: signerAccount(),
-    chain: celo,
-    transport: http(process.env.CELO_RPC_URL),
+    chain,
+    transport: http(RPC_URL),
   });
 }
 

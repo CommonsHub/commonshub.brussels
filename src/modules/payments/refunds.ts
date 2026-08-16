@@ -11,11 +11,10 @@
  */
 
 import Stripe from "stripe";
-import { createPublicClient, encodeFunctionData, http, parseAbi, parseUnits } from "viem";
-import { celo } from "viem/chains";
+import { encodeFunctionData, parseAbi, parseUnits } from "viem";
 import type { Contribution } from "@/modules/proposals/types";
 import { execFromSafe, predictSafeAddress, safesConfigured } from "./safe";
-import { TOKEN_ADDRESS, TOKEN_DECIMALS, EXPLORER_URL } from "./tokens";
+import { EXPLORER_URL, TOKEN_ADDRESS, TOKEN_DECIMALS, publicClient } from "./chain";
 
 export interface RefundResult {
   contributionId: string;
@@ -33,8 +32,6 @@ const erc20 = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function transfer(address to, uint256 value) returns (bool)",
 ]);
-
-const publicClient = createPublicClient({ chain: celo, transport: http(process.env.CELO_RPC_URL) });
 
 // ── euros ──────────────────────────────────────────────────────────────────
 
