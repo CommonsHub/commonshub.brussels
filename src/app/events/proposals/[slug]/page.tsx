@@ -13,6 +13,7 @@ import { isMember, isSteward } from "@/modules/identity/service";
 import { balanceForDiscordUser } from "@/modules/payments/tokens";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
+import { Contributors } from "@/components/proposals/contributors";
 import { ContributePanel } from "@/components/proposals/contribute-panel";
 import { CommentBox } from "@/components/proposals/comment-box";
 import { StewardActions } from "@/components/proposals/steward-actions";
@@ -104,9 +105,11 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
           </Badge>
         </div>
 
+        {/* What this is and how it is doing comes first — on a phone that means
+            before the thread, not after it. */}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
           {/* ── the thread ── */}
-          <div className="space-y-6 min-w-0">
+          <div className="space-y-6 min-w-0 order-2 lg:order-1">
             <Card>
               <CardContent className="pt-6 space-y-3">
                 {proposal.pitch && <p className="font-medium">{proposal.pitch}</p>}
@@ -182,6 +185,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
               );
             })}
 
+            <CommentBox proposalId={proposal.id} authorName={account?.displayName ?? null} />
+
             {isSteward(account) && proposal.status !== "confirmed" && (
               <StewardActions
                 proposalId={proposal.id}
@@ -194,19 +199,25 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                 blockedReason={blockedReason}
               />
             )}
-
-            <CommentBox proposalId={proposal.id} authorName={account?.displayName ?? null} />
           </div>
 
           {/* ── the summary ── */}
-          <aside className="space-y-6 lg:sticky lg:top-6">
+          <aside className="space-y-6 order-1 lg:order-2 lg:sticky lg:top-6">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  Current version <span className="text-muted-foreground">· v{proposal.version}</span>
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">
+                    Current version{" "}
+                    <span className="text-muted-foreground">· v{proposal.version}</span>
+                  </CardTitle>
+                  <Badge variant={statusTone(proposal.status)}>
+                    {statusLabel(proposal.status)}
+                  </Badge>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
+                <StatusSteps status={proposal.status} />
+                <hr className="border-border" />
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">When</p>
                   {confirmedSlot ? (
@@ -259,19 +270,13 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
               </CardContent>
             </Card>
 
+            {/* Funding, how to add to it, and who already has. */}
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 space-y-5">
                 <FundingMeter funding={funding} />
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {going.length ? `${seats} coming` : "Be the first to come"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                <hr className="border-border" />
+
                 <ContributePanel
                   proposalId={proposal.id}
                   ticketEur={proposal.tickets.eur}
@@ -282,6 +287,20 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                   discordLinked={!!account?.discordId}
                   tokenBalance={tokenBalance}
                 />
+
+                <hr className="border-border" />
+
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-semibold text-sm">Who has chipped in</h3>
+                    {going.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {seats} {seats === 1 ? "person" : "people"} coming
+                      </span>
+                    )}
+                  </div>
+                  <Contributors contributions={proposal.contributions} />
+                </div>
               </CardContent>
             </Card>
 
@@ -339,14 +358,6 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Where it is up to</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StatusSteps status={proposal.status} />
-              </CardContent>
-            </Card>
           </aside>
         </div>
       </div>

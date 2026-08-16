@@ -6,6 +6,7 @@ import { Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatTokens } from "@/modules/proposals/funding";
 
 interface TokenRequest {
   amount: number;
@@ -223,9 +224,19 @@ export function ContributePanel({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="token-amount" className="text-xs uppercase tracking-wide text-muted-foreground">
-          {hasTicket ? "Ticket in tokens" : "Chip in, in tokens"}
-        </Label>
+        <div className="flex items-baseline justify-between gap-2">
+          <Label
+            htmlFor="token-amount"
+            className="text-xs uppercase tracking-wide text-muted-foreground"
+          >
+            {hasTicket ? "Ticket in tokens" : "Chip in, in tokens"}
+          </Label>
+          {tokenBalance !== null && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              you hold {formatTokens(tokenBalance)}
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <Input
             id="token-amount"
@@ -239,20 +250,28 @@ export function ContributePanel({
           <Button
             variant="outline"
             onClick={payWithTokens}
-            disabled={busy === "tokens" || !tokenAmount}
+            disabled={busy === "tokens" || !tokenAmount || !discordLinked}
             className="flex-1"
           >
             {busy === "tokens" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Pay with tokens
           </Button>
         </div>
+        {tokenBalance !== null && typeof tokenAmount === "number" && tokenAmount > tokenBalance && (
+          <p className="text-xs text-amber-600 dark:text-amber-500">
+            That is more than you hold. Earn some at the hub, or pay in euros.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           {discordLinked
-            ? tokenBalance !== null
-              ? `You hold ${tokenBalance} tokens. No admin fee on token payments.`
-              : "Paid with the hub bot on Discord. No admin fee on token payments."
-            : "Sign in with Discord to pay with tokens — that is where your tokens live."}
+            ? "Sent with the hub bot on Discord. No admin fee on token payments."
+            : "Connect Discord to pay with tokens — that is where your tokens live."}
         </p>
+        {!discordLinked && (
+          <Button variant="ghost" size="sm" asChild className="px-0">
+            <a href="/signin">Connect Discord</a>
+          </Button>
+        )}
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
