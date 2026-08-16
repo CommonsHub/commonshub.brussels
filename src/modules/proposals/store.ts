@@ -13,12 +13,14 @@
 import * as fs from "fs";
 import * as path from "path";
 import type {
+  Attachment,
   Audience,
   Contribution,
   Proposal,
   ProposalComment,
   ProposalDraft,
   ProposalStatus,
+  Refund,
   Revision,
   Rsvp,
   Slot,
@@ -45,6 +47,7 @@ export type ProposalEvent =
   | { type: "contributed"; at: string; contribution: Contribution }
   | { type: "rsvped"; at: string; rsvp: Rsvp }
   | { type: "tasklist_linked"; at: string; taskListId: string }
+  | { type: "refunded"; at: string; refunds: Refund[]; note?: string }
   | {
       type: "status_changed";
       at: string;
@@ -136,6 +139,9 @@ function project(events: ProposalEvent[]): Proposal | null {
       case "tasklist_linked":
         proposal = { ...proposal, taskListId: event.taskListId };
         break;
+      case "refunded":
+        proposal = { ...proposal, refunds: [...proposal.refunds, ...event.refunds] };
+        break;
       case "status_changed":
         proposal = {
           ...proposal,
@@ -187,12 +193,20 @@ export function listProposalIds(): string[] {
     .map((e) => e.name);
 }
 
-export function getProposal(idOrSlug: string): Proposal | null {
-  const direct = project(readLog(idOrSlug));
+/** Accepts an id, a slug, "7-repair-cafe", or plain "7". */
+export function getProposal(idOrSlugOrNumber: string): Proposal | null {
+  const direct = project(readLog(idOrSlugOrNumber));
   if (direct) return direct;
+
+  const asNumber = /^\d+$/.test(idOrSlugOrNumber) ? parseInt(idOrSlugOrNumber, 10) : null;
+  const leadingNumber = /^(\d+)-/.exec(idOrSlugOrNumber);
+  const number = asNumber ?? (leadingNumber ? parseInt(leadingNumber[1], 10) : null);
+
   for (const id of listProposalIds()) {
     const proposal = project(readLog(id));
-    if (proposal && proposal.slug === idOrSlug) return proposal;
+    if (!proposal) continue;
+    if (proposal.slug === idOrSlugOrNumber) return proposal;
+    if (number !== null && proposal.number === number) return proposal;
   }
   return null;
 }
@@ -221,18 +235,42 @@ function shortId(): string {
   return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 }
 
+/**
+ * The next proposal number. Proposals are numbered like issues — #7 is easier
+ * to say out loud, and to put in a URL, than a random id.
+ */
+function nextNumber(): number {
+  const counterFile = path.join(PROPOSALS_DIR, "counter.json");
+  ensureDir(PROPOSALS_DIR);
+  let current = 0;
+  if (fs.existsSync(counterFile)) {
+    try {
+      current = JSON.parse(fs.readFileSync(counterFile, "utf-8")).last ?? 0;
+    } catch {
+      current = 0;
+    }
+  }
+  // Never hand out a number already in use, even if the counter went missing.
+  const used = listProposals({ includeDrafts: true }).map((p) => p.number ?? 0);
+  const next = Math.max(current, ...used, 0) + 1;
+  fs.writeFileSync(counterFile, JSON.stringify({ last: next }), "utf-8");
+  return next;
+}
+
 export function createProposal(
   draft: ProposalDraft,
   author: { id: string; name: string },
   options?: { status?: ProposalStatus },
 ): Proposal {
   const id = shortId();
+  const number = nextNumber();
   const now = new Date().toISOString();
   const slots: Slot[] = draft.slots.map((s, i) => ({ ...s, id: `s${i + 1}` }));
 
   const proposal: Proposal = {
     id,
-    slug: `${slugify(draft.title) || "proposal"}-${id.slice(0, 4)}`,
+    number,
+    slug: `${number}-${slugify(draft.title) || "proposal"}`,
     version: 1,
     status: options?.status ?? "open",
     title: draft.title,
@@ -251,6 +289,7 @@ export function createProposal(
     updatedAt: now,
     comments: [],
     contributions: [],
+    refunds: [],
     rsvps: [],
     revisions: [],
   };
@@ -313,6 +352,7 @@ export function addComment(
   id: string,
   body: string,
   author: { id: string; name: string },
+  attachments?: Attachment[],
 ): ProposalComment | null {
   const proposal = getProposal(id);
   if (!proposal) return null;
@@ -321,6 +361,7 @@ export function addComment(
     authorId: author.id,
     authorName: author.name,
     body,
+    ...(attachments && attachments.length ? { attachments } : {}),
     createdAt: new Date().toISOString(),
   };
   appendEvent(proposal.id, { type: "commented", at: comment.createdAt, comment });
@@ -360,6 +401,18 @@ export function linkTaskList(id: string, taskListId: string): void {
   });
 }
 
+export function recordRefunds(id: string, refunds: Refund[], note?: string): Proposal | null {
+  const proposal = getProposal(id);
+  if (!proposal || refunds.length === 0) return proposal;
+  appendEvent(proposal.id, {
+    type: "refunded",
+    at: new Date().toISOString(),
+    refunds,
+    note,
+  });
+  return getProposal(proposal.id);
+}
+
 export function setStatus(
   id: string,
   status: ProposalStatus,
@@ -386,7 +439,8 @@ export type TimelineItem =
   | { kind: "revision"; at: string; revision: Revision }
   | { kind: "contribution"; at: string; contribution: Contribution }
   | { kind: "rsvp"; at: string; rsvp: Rsvp }
-  | { kind: "status"; at: string; status: ProposalStatus; by: string; note?: string };
+  | { kind: "status"; at: string; status: ProposalStatus; by: string; note?: string }
+  | { kind: "refund"; at: string; refunds: Refund[]; note?: string };
 
 export function timelineFor(proposal: Proposal): TimelineItem[] {
   const events = readLog(proposal.id);
@@ -401,6 +455,9 @@ export function timelineFor(proposal: Proposal): TimelineItem[] {
         break;
       case "rsvped":
         items.push({ kind: "rsvp", at: event.at, rsvp: event.rsvp });
+        break;
+      case "refunded":
+        items.push({ kind: "refund", at: event.at, refunds: event.refunds, note: event.note });
         break;
       case "status_changed":
         items.push({

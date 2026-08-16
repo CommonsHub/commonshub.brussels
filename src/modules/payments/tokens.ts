@@ -11,6 +11,7 @@
 import { createPublicClient, http, parseAbi, formatUnits, parseUnits, type Address } from "viem";
 import { celo } from "viem/chains";
 import settings from "@/settings/settings.json";
+import { proposalAddressOrNull, walletsConfigured } from "./proposal-wallet";
 
 const token = settings.contributionToken as {
   chain: string;
@@ -34,7 +35,7 @@ export function hubTokenAccount(): Address | null {
 }
 
 export function tokensConfigured(): boolean {
-  return hubTokenAccount() !== null;
+  return hubTokenAccount() !== null || walletsConfigured();
 }
 
 const client = createPublicClient({
@@ -145,13 +146,21 @@ export interface TokenPaymentRequest {
   symbol: string;
 }
 
-export function buildPaymentRequest(base: number): TokenPaymentRequest {
+/**
+ * Where a proposal collects: its own wallet, so what it holds is verifiable on
+ * chain and a refund is simply sending it back out again.
+ */
+export function collectingAddress(proposalId: string): Address | null {
+  return proposalAddressOrNull(proposalId) ?? hubTokenAccount();
+}
+
+export function buildPaymentRequest(base: number, proposalId: string): TokenPaymentRequest {
   const amount = requestAmount(base);
-  const account = hubTokenAccount();
+  const account = collectingAddress(proposalId);
   return {
     amount,
     account,
-    command: `/send ${amount} to @CommonsHub`,
+    command: account ? `/send ${amount} to ${account}` : `/send ${amount} to @CommonsHub`,
     symbol: token.symbol,
   };
 }
@@ -171,9 +180,11 @@ export interface TransferMatch {
  */
 export async function findIncomingTransfer(
   amount: number,
-  options?: { withinBlocks?: bigint },
+  options?: { withinBlocks?: bigint; proposalId?: string },
 ): Promise<TransferMatch> {
-  const account = hubTokenAccount();
+  const account = options?.proposalId
+    ? collectingAddress(options.proposalId)
+    : hubTokenAccount();
   if (!account) return { found: false };
 
   const target = parseUnits(amount.toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);

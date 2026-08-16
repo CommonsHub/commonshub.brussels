@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getProposal, progressFor, setStatus } from "@/modules/proposals/store";
+import { getProposal, progressFor, recordRefunds, setStatus } from "@/modules/proposals/store";
+import { refundEverything } from "@/modules/payments/refunds";
+import type { Refund } from "@/modules/proposals/types";
 import { currentCaller } from "@/modules/identity/server";
 import { isSteward } from "@/modules/identity/service";
 
@@ -59,5 +61,41 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     { note, confirmedSlotId },
   );
 
-  return NextResponse.json({ proposal: updated });
+  // Declining or cancelling means it is not happening, so the money goes back
+  // straight away rather than waiting for someone to remember.
+  let refunded = 0;
+  const failures: Array<{ contributorName: string; error?: string }> = [];
+  if (status === "declined" || status === "cancelled") {
+    const alreadyRefunded = new Set(proposal.refunds.map((r) => r.contributionId));
+    const results = await refundEverything(proposal.id, proposal.contributions, alreadyRefunded);
+    const refunds: Refund[] = results
+      .filter((r) => r.ok)
+      .map((r) => ({
+        id: `ref_${r.contributionId}`,
+        contributionId: r.contributionId,
+        contributorId: r.contributorId,
+        contributorName: r.contributorName,
+        currency: r.currency,
+        amount: r.amount,
+        reference: r.reference,
+        explorerUrl: r.explorerUrl,
+        createdAt: new Date().toISOString(),
+      }));
+    if (refunds.length) {
+      recordRefunds(proposal.id, refunds, "This event is not going ahead.");
+      refunded = refunds.length;
+    }
+    for (const failure of results.filter((r) => !r.ok)) {
+      console.error(
+        `[proposals] refund failed for ${failure.contributorName}: ${failure.error}`,
+      );
+      failures.push({ contributorName: failure.contributorName, error: failure.error });
+    }
+  }
+
+  return NextResponse.json({
+    proposal: getProposal(proposal.id) ?? updated,
+    refunded,
+    refundFailures: failures,
+  });
 }

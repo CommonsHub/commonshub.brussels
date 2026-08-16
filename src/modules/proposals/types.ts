@@ -58,8 +58,23 @@ export interface Contribution {
   /** People count for a ticket; donations are 0. */
   seats: number;
   createdAt: string;
-  /** Stripe session id, or the token transfer reference. */
+  /** Stripe session id, or the token transfer hash. */
   reference?: string;
+  /** For token payments: where it came from, so a refund can go back there. */
+  fromAddress?: string;
+}
+
+export interface Refund {
+  id: string;
+  contributionId: string;
+  contributorId: string;
+  contributorName: string;
+  currency: Currency;
+  amount: number;
+  /** Stripe refund id, or the transfer hash. */
+  reference?: string;
+  explorerUrl?: string;
+  createdAt: string;
 }
 
 export type RsvpState = "going" | "maybe" | "not_going";
@@ -74,11 +89,19 @@ export interface Rsvp {
   createdAt: string;
 }
 
+/** A picture someone attached to a comment. */
+export interface Attachment {
+  url: string;
+  mime: string;
+  name: string;
+}
+
 export interface ProposalComment {
   id: string;
   authorId: string;
   authorName: string;
   body: string;
+  attachments?: Attachment[];
   createdAt: string;
 }
 
@@ -93,6 +116,8 @@ export interface Revision {
 
 export interface Proposal {
   id: string;
+  /** Human-facing, incremental: proposal #7. Also the short URL. */
+  number: number;
   slug: string;
   version: number;
   status: ProposalStatus;
@@ -120,6 +145,7 @@ export interface Proposal {
 
   comments: ProposalComment[];
   contributions: Contribution[];
+  refunds: Refund[];
   rsvps: Rsvp[];
   revisions: Revision[];
 

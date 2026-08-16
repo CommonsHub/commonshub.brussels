@@ -32,7 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   let match;
   try {
-    match = await findIncomingTransfer(amount);
+    match = await findIncomingTransfer(amount, { proposalId: proposal.id });
   } catch (error) {
     console.error("[contribute] could not read the chain:", error);
     return NextResponse.json(
@@ -66,6 +66,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     contributorName: caller.account.displayName,
     seats,
     reference: match.txHash,
+    // Kept so a refund can go back to exactly where it came from.
+    fromAddress: match.from,
   });
 
   if (kind === "ticket" && seats > 0) {

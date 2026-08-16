@@ -15,6 +15,7 @@ import { FundingMeter } from "@/components/proposals/funding-meter";
 import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
 import { Contributors } from "@/components/proposals/contributors";
 import { WhatsMissing } from "@/components/proposals/whats-missing";
+import { ActivityLog } from "@/components/proposals/activity-log";
 import { ContributePanel } from "@/components/proposals/contribute-panel";
 import { CommentBox } from "@/components/proposals/comment-box";
 import { StewardActions } from "@/components/proposals/steward-actions";
@@ -72,6 +73,10 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
     account?.discordId && (await balanceForDiscordUser(account.discordId).catch(() => null));
   const tokenBalance = balance && balance.available ? balance.balance : null;
 
+  const photoCount = proposal.comments.reduce(
+    (sum, c) => sum + (c.attachments?.length ?? 0),
+    0,
+  );
   const going = proposal.rsvps.filter((r) => r.state === "going");
   const seats = going.reduce((sum, r) => sum + r.seats, 0);
   const confirmedSlot = proposal.slots.find((s) => s.id === proposal.confirmedSlotId);
@@ -97,8 +102,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
           <div className="space-y-2 min-w-0">
             <h1 className="text-3xl font-bold">{proposal.title}</h1>
             <p className="text-muted-foreground">
-              Proposed by {proposal.proposerName} · {ago(proposal.createdAt)} · version{" "}
-              {proposal.version}
+              #{proposal.number} · proposed by {proposal.proposerName} · {ago(proposal.createdAt)} ·
+              version {proposal.version}
             </p>
           </div>
           <Badge variant={statusTone(proposal.status)} className="text-sm">
@@ -128,7 +133,29 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                       <span className="font-medium">{item.comment.authorName}</span>{" "}
                       <span className="text-muted-foreground">· {ago(item.at)}</span>
                     </p>
-                    <p className="text-sm whitespace-pre-wrap">{item.comment.body}</p>
+                    {item.comment.body && (
+                      <p className="text-sm whitespace-pre-wrap">{item.comment.body}</p>
+                    )}
+                    {item.comment.attachments && item.comment.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {item.comment.attachments.map((attachment) => (
+                          <a
+                            key={attachment.url}
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={attachment.url}
+                              alt={attachment.name}
+                              loading="lazy"
+                              className="w-28 h-28 object-cover rounded-md border hover:border-primary"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -177,6 +204,17 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                 );
               }
 
+              if (item.kind === "refund") {
+                return (
+                  <p key={index} className="text-sm text-primary px-1">
+                    Everyone was refunded — {item.refunds.length}{" "}
+                    {item.refunds.length === 1 ? "contribution" : "contributions"} went back ·{" "}
+                    {ago(item.at)}
+                    {item.note && <span className="text-muted-foreground"> — {item.note}</span>}
+                  </p>
+                );
+              }
+
               return (
                 <p key={index} className="text-sm px-1">
                   <span className="font-medium">{item.by}</span> marked this{" "}
@@ -185,6 +223,25 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
                 </p>
               );
             })}
+
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">Activity</CardTitle>
+                  {photoCount > 0 && (
+                    <Link
+                      href={`/events/proposals/${proposal.slug}/photos`}
+                      className="text-sm text-muted-foreground hover:text-primary"
+                    >
+                      {photoCount} {photoCount === 1 ? "photo" : "photos"}
+                    </Link>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ActivityLog items={timeline} slug={proposal.slug} />
+              </CardContent>
+            </Card>
 
             <CommentBox proposalId={proposal.id} authorName={account?.displayName ?? null} />
 

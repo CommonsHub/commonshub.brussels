@@ -45,7 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         { status: 503 },
       );
     }
-    return NextResponse.json({ tokenRequest: buildPaymentRequest(amount) });
+    return NextResponse.json({ tokenRequest: buildPaymentRequest(amount, proposal.id) });
   }
 
   if (!stripeConfigured()) {
