@@ -14,6 +14,7 @@ import { balanceForDiscordUser } from "@/modules/payments/tokens";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
 import { Contributors } from "@/components/proposals/contributors";
+import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ContributePanel } from "@/components/proposals/contribute-panel";
 import { CommentBox } from "@/components/proposals/comment-box";
 import { StewardActions } from "@/components/proposals/steward-actions";
@@ -203,6 +204,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ slug:
 
           {/* ── the summary ── */}
           <aside className="space-y-6 order-1 lg:order-2 lg:sticky lg:top-6">
+            <WhatsMissing proposal={proposal} funding={funding} taskList={taskList} />
+
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-2">

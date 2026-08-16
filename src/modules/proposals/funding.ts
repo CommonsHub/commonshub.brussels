@@ -33,6 +33,7 @@ interface RoomRecord {
   capacity: number;
   pricePerHour?: number;
   tokensPerHour?: number;
+  heroImage?: string;
 }
 
 const rooms = (roomsData as { rooms: RoomRecord[] }).rooms;

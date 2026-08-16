@@ -23,6 +23,7 @@ export default async function ProposePage() {
     capacity: room.capacity,
     pricePerHour: room.pricePerHour ?? 0,
     tokensPerHour: room.tokensPerHour ?? 0,
+    image: room.heroImage,
   }));
 
   return (

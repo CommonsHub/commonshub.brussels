@@ -17,15 +17,10 @@ import {
   splitEuroContribution,
 } from "@/modules/proposals/funding";
 import { SUGGESTED_NEEDS } from "@/modules/tasks/needs";
+import { RoomPicker } from "@/components/proposals/room-picker";
 import type { Me } from "@/modules/identity/client";
 
-interface RoomOption {
-  slug: string;
-  name: string;
-  capacity: number;
-  pricePerHour: number;
-  tokensPerHour: number;
-}
+import type { RoomOption } from "@/components/proposals/room-picker";
 
 interface SlotDraft {
   date: string;
@@ -200,55 +195,56 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
             Give every option that works for you — the more the easier it is to find a free room.
           </p>
           {slots.map((slot, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_auto] gap-3 items-end"
-            >
-              <div className="space-y-2 col-span-2 sm:col-span-1 min-w-0">
-                <Label htmlFor={`date-${index}`}>Date</Label>
-                <Input
-                  id={`date-${index}`}
-                  type="date"
-                  className="w-full"
-                  value={slot.date}
-                  onChange={(e) => updateSlot(index, { date: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2 min-w-0">
-                <Label htmlFor={`start-${index}`}>Start</Label>
-                <Input
-                  id={`start-${index}`}
-                  type="time"
-                  className="w-full"
-                  value={slot.start}
-                  onChange={(e) => updateSlot(index, { start: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2 min-w-0">
-                <Label htmlFor={`hours-${index}`}>Hours</Label>
-                <Input
-                  id={`hours-${index}`}
-                  type="number"
-                  min={1}
-                  max={12}
-                  step={0.5}
-                  className="w-full"
-                  value={slot.duration}
-                  onChange={(e) => updateSlot(index, { duration: Number(e.target.value) })}
-                />
-              </div>
-              <div className="flex items-center justify-end h-9">
+            <div key={index} className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Option {index + 1}
+                </span>
                 {slots.length > 1 && (
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon"
+                    size="sm"
+                    className="h-7 px-2"
                     onClick={() => setSlots((c) => c.filter((_, i) => i !== index))}
-                    aria-label={`Remove option ${index + 1}`}
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5 mr-1" /> Remove
                   </Button>
                 )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor={`date-${index}`}>Date</Label>
+                <Input
+                  id={`date-${index}`}
+                  type="date"
+                  value={slot.date}
+                  onChange={(e) => updateSlot(index, { date: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5 min-w-0">
+                  <Label htmlFor={`start-${index}`}>Start</Label>
+                  <Input
+                    id={`start-${index}`}
+                    type="time"
+                    value={slot.start}
+                    onChange={(e) => updateSlot(index, { start: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label htmlFor={`hours-${index}`}>Hours</Label>
+                  <Input
+                    id={`hours-${index}`}
+                    type="number"
+                    min={1}
+                    max={12}
+                    step={0.5}
+                    value={slot.duration}
+                    onChange={(e) => updateSlot(index, { duration: Number(e.target.value) })}
+                  />
+                </div>
               </div>
             </div>
           ))}
@@ -263,36 +259,26 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
           <CardTitle>Where, and how many</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={roomSlug === null ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRoomSlug(null)}
-            >
-              Any room — you decide
-            </Button>
-            {rooms.map((room) => (
-              <Button
-                key={room.slug}
-                type="button"
-                variant={roomSlug === room.slug ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRoomSlug(room.slug)}
-              >
-                {room.name} · {room.capacity}
-              </Button>
-            ))}
-          </div>
-
-          <div className="space-y-2 max-w-40">
-            <Label htmlFor="people">Expected people</Label>
+          {/* Headcount first: it is what decides which rooms can work at all. */}
+          <div className="space-y-1.5 max-w-40">
+            <Label htmlFor="people">How many people?</Label>
             <Input
               id="people"
               type="number"
               min={1}
               value={expectedPeople}
               onChange={(e) => setExpectedPeople(Number(e.target.value))}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Which room?</Label>
+            <RoomPicker
+              rooms={rooms}
+              selected={roomSlug}
+              onSelect={setRoomSlug}
+              expectedPeople={expectedPeople}
+              dates={slots.map((s) => s.date)}
             />
           </div>
 
@@ -313,7 +299,7 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
             </p>
             <p className="text-xs text-muted-foreground">
               Tickets and donations both count towards it. Once it is covered, a steward can put the
-              event on the calendar.
+              event on the calendar. If it never gets there, everyone who contributed is refunded.
             </p>
           </div>
         </CardContent>
@@ -472,6 +458,27 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
               Add
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/40">
+        <CardHeader>
+          <CardTitle className="text-base">What happens after you post</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            Other members of the community will be able to chime in and contribute. Once the
+            different resources needed to make this event happen are secured, it will be confirmed
+            in the calendar.
+          </p>
+          <p>
+            Until then the proposal shows what is still missing — the room, the money for it, the
+            things on your list — so people know exactly what would make it happen.
+          </p>
+          <p className="text-foreground">
+            If it never gathers everything it needs, it does not happen and everyone who contributed
+            gets their money back, in the currency they paid.
+          </p>
         </CardContent>
       </Card>
 
