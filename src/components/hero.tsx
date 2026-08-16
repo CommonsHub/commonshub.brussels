@@ -94,9 +94,9 @@ export function Hero() {
             className="text-lg px-8 py-6 gap-2 cursor-pointer"
             asChild
           >
-            <Link href="#book">
-              <Calendar className="w-5 h-5" />
-              Book the Space
+            <Link href="#use-the-space">
+              <Users className="w-5 h-5" />
+              Make use of the space
               <ArrowRight className="w-5 h-5" />
             </Link>
           </Button>
@@ -106,9 +106,9 @@ export function Hero() {
             className="text-lg px-8 py-6 gap-2 bg-transparent cursor-pointer"
             asChild
           >
-            <Link href="/membership">
-              <Users className="w-5 h-5" />
-              Join the community
+            <Link href="/book">
+              <Calendar className="w-5 h-5" />
+              Book the space for your private event
             </Link>
           </Button>
         </div>

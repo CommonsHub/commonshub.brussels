@@ -12,12 +12,12 @@ export function EventFork() {
   const open = listProposals().filter((p) => p.status === "open" || p.status === "funded");
 
   return (
-    <section className="py-16 bg-muted/30">
+    <section id="use-the-space" className="py-16 bg-muted/30 scroll-mt-16">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold">What do you want to do at the hub?</h2>
+          <h2 className="text-3xl font-bold">What kind of event is it?</h2>
           <p className="text-muted-foreground mt-2">
-            Two ways in. Pick the one that matches your event.
+            Two ways to use the space. Pick the one that matches yours.
           </p>
         </div>
 
