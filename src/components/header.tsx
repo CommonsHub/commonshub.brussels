@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { AuthButton } from "@/components/auth-button";
 import { NostrOutboxBadge } from "@/components/nostr-outbox-badge";
 import { Menu, X, LogOut, Coins } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTokenBalance } from "@/hooks/use-token-balance";
+import { fetchMe, signOut as endHubSession, type Me } from "@/modules/identity/client";
 import { getDisplayRoles } from "@/lib/roles";
 
 export function Header() {
@@ -19,6 +20,34 @@ export function Header() {
 
   // Get filtered roles to display
   const displayRoles = getDisplayRoles(session?.user?.roleDetails || []);
+
+  // Someone can be signed in without Discord — by email or with a passkey — so
+  // the header asks the hub who it is talking to as well.
+  const [hubAccount, setHubAccount] = useState<Me | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((account) => !cancelled && setHubAccount(account))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  /**
+   * Signing out has to end both sessions: the Discord one this header reads,
+   * and the hub session that the proposal pages read. Ending only one leaves
+   * you signed out in the menu and still signed in on the page.
+   */
+  async function signOutEverywhere() {
+    try {
+      await endHubSession();
+    } catch (error) {
+      console.error("[header] could not end the hub session:", error);
+    }
+    setHubAccount(null);
+    await signOut({ callbackUrl: "/" });
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -194,19 +223,42 @@ export function Header() {
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => signOut()}
+                    onClick={signOutEverywhere}
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign out
                   </Button>
                 </div>
+              ) : hubAccount ? (
+                // Signed in by email or passkey — no Discord session to read.
+                <div className="flex flex-col gap-3 pt-2">
+                  <div className="p-3 rounded-lg bg-muted">
+                    <p className="font-medium">{hubAccount.displayName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hubAccount.hasDiscord
+                        ? "Signed in"
+                        : "Connect Discord to use your tokens"}
+                    </p>
+                  </div>
+                  {!hubAccount.hasDiscord && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => signIn("discord", { callbackUrl: "/signin?link=1" })}
+                    >
+                      Connect Discord
+                    </Button>
+                  )}
+                  <Button variant="outline" className="w-full" onClick={signOutEverywhere}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign out
+                  </Button>
+                </div>
               ) : (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => signIn("discord")}
-                >
-                  Login with Discord
+                <Button variant="outline" className="w-full" asChild>
+                  <Link href="/signin" onClick={() => setMobileMenuOpen(false)}>
+                    Sign in
+                  </Link>
                 </Button>
               )}
             </div>

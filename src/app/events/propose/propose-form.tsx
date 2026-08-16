@@ -200,46 +200,56 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
             Give every option that works for you — the more the easier it is to find a free room.
           </p>
           {slots.map((slot, index) => (
-            <div key={index} className="flex flex-wrap items-end gap-3">
-              <div className="space-y-2">
-                <Label>Date</Label>
+            <div
+              key={index}
+              className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_auto] gap-3 items-end"
+            >
+              <div className="space-y-2 col-span-2 sm:col-span-1 min-w-0">
+                <Label htmlFor={`date-${index}`}>Date</Label>
                 <Input
+                  id={`date-${index}`}
                   type="date"
+                  className="w-full"
                   value={slot.date}
                   onChange={(e) => updateSlot(index, { date: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Start</Label>
+              <div className="space-y-2 min-w-0">
+                <Label htmlFor={`start-${index}`}>Start</Label>
                 <Input
+                  id={`start-${index}`}
                   type="time"
+                  className="w-full"
                   value={slot.start}
                   onChange={(e) => updateSlot(index, { start: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Hours</Label>
+              <div className="space-y-2 min-w-0">
+                <Label htmlFor={`hours-${index}`}>Hours</Label>
                 <Input
+                  id={`hours-${index}`}
                   type="number"
                   min={1}
                   max={12}
                   step={0.5}
-                  className="w-24"
+                  className="w-full"
                   value={slot.duration}
                   onChange={(e) => updateSlot(index, { duration: Number(e.target.value) })}
                 />
               </div>
-              {slots.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSlots((c) => c.filter((_, i) => i !== index))}
-                  aria-label="Remove this option"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
+              <div className="flex items-center justify-end h-9">
+                {slots.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSlots((c) => c.filter((_, i) => i !== index))}
+                    aria-label={`Remove option ${index + 1}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => setSlots((c) => [...c, emptySlot()])}>
@@ -407,8 +417,7 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            This becomes a shared list anyone can add to and pick items off — including people who
-            are not coming.
+            This becomes a shared list anyone can add to and pick items off.
           </p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED_NEEDS.map((need) => {
