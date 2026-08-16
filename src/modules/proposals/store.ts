@@ -48,6 +48,7 @@ export type ProposalEvent =
   | { type: "rsvped"; at: string; rsvp: Rsvp }
   | { type: "tasklist_linked"; at: string; taskListId: string }
   | { type: "refunded"; at: string; refunds: Refund[]; note?: string }
+  | { type: "numbered"; at: string; number: number; slug: string }
   | {
       type: "status_changed";
       at: string;
@@ -97,7 +98,13 @@ function readLog(id: string): ProposalEvent[] {
 function project(events: ProposalEvent[]): Proposal | null {
   const first = events[0];
   if (!first || first.type !== "created") return null;
-  let proposal: Proposal = { ...first.proposal };
+  // Proposals written before a field existed are read with a sane default
+  // rather than migrated in place — the log is append-only.
+  let proposal: Proposal = {
+    ...first.proposal,
+    refunds: first.proposal.refunds ?? [],
+    number: first.proposal.number ?? 0,
+  };
 
   for (const event of events.slice(1)) {
     switch (event.type) {
@@ -141,6 +148,9 @@ function project(events: ProposalEvent[]): Proposal | null {
         break;
       case "refunded":
         proposal = { ...proposal, refunds: [...proposal.refunds, ...event.refunds] };
+        break;
+      case "numbered":
+        proposal = { ...proposal, number: event.number, slug: event.slug };
         break;
       case "status_changed":
         proposal = {
@@ -209,6 +219,27 @@ export function getProposal(idOrSlugOrNumber: string): Proposal | null {
     if (number !== null && proposal.number === number) return proposal;
   }
   return null;
+}
+
+/**
+ * Give a number to anything written before proposals had one, oldest first, so
+ * the numbering still reads as the order they were proposed in.
+ */
+export function numberUnnumbered(): void {
+  const unnumbered = listProposalIds()
+    .map((id) => project(readLog(id)))
+    .filter((p): p is Proposal => p !== null && !p.number)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+
+  for (const proposal of unnumbered) {
+    const number = nextNumber();
+    appendEvent(proposal.id, {
+      type: "numbered",
+      at: new Date().toISOString(),
+      number,
+      slug: `${number}-${slugify(proposal.title) || "proposal"}`,
+    });
+  }
 }
 
 export function listProposals(options?: { includeDrafts?: boolean }): Proposal[] {
