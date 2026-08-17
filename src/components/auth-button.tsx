@@ -1,6 +1,9 @@
 "use client"
 
-import { useSession, signIn, signOut } from "next-auth/react"
+import { useSession, signOut } from "next-auth/react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { fetchMe, signOut as endHubSession, type Me } from "@/modules/identity/client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -19,6 +22,33 @@ import Link from "next/link"
 export function AuthButton() {
   const { data: session, status } = useSession()
   const { balance } = useTokenBalance()
+  const router = useRouter()
+
+  // Signed in by email or passkey: no Discord session, but very much signed in.
+  const [hubAccount, setHubAccount] = useState<Me | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchMe()
+      .then((account) => !cancelled && setHubAccount(account))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [session])
+
+  async function signOutEverywhere() {
+    try {
+      await endHubSession()
+    } catch {
+      /* the next-auth sign-out below still runs */
+    }
+    setHubAccount(null)
+    if (session) await signOut({ callbackUrl: "/" })
+    else {
+      router.push("/")
+      router.refresh()
+    }
+  }
 
   if (status === "loading") {
     return (
@@ -80,7 +110,7 @@ export function AuthButton() {
               Profile
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer">
+          <DropdownMenuItem onClick={signOutEverywhere} className="cursor-pointer">
             <LogOut className="w-4 h-4 mr-2" />
             Sign out
           </DropdownMenuItem>
@@ -89,18 +119,49 @@ export function AuthButton() {
     )
   }
 
+  if (hubAccount) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <Avatar className="w-8 h-8">
+              <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                {hubAccount.displayName.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+          <DropdownMenuLabel>{hubAccount.displayName}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {hubAccount.hasDiscord ? (
+            <DropdownMenuItem asChild className="cursor-pointer">
+              <Link href={`/members/${hubAccount.displayName}`}>
+                <User className="w-4 h-4 mr-2" />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem asChild className="cursor-pointer">
+              <Link href="/signin">Connect Discord</Link>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={signOutEverywhere} className="cursor-pointer">
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  // Signed out: to the sign-in page and its choices — email code, passkey,
+  // Discord — rather than straight into one provider.
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon">
-          <User className="w-5 h-5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => signIn("discord")} className="cursor-pointer">
-          Login with Discord
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button variant="ghost" size="icon" asChild aria-label="Sign in">
+      <Link href="/signin">
+        <User className="w-5 h-5" />
+      </Link>
+    </Button>
   )
 }

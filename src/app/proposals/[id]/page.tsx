@@ -19,7 +19,8 @@ import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
 import { ReactionBar } from "@/components/proposals/reaction-bar";
 import { ProposalFacts } from "@/components/proposals/facts";
-import { prettyField, visibleChange } from "@/modules/proposals/diff-labels";
+import { describeChanges, prettyField, visibleChange } from "@/modules/proposals/diff-labels";
+import { avatarFor } from "@/modules/proposals/avatars";
 import { InlineDescription } from "@/components/proposals/inline-description";
 import { bookableRooms } from "@/modules/proposals/funding";
 import { Pencil } from "lucide-react";
@@ -67,6 +68,49 @@ function ago(iso: string): string {
   const hours = Math.floor(diff / 3_600_000);
   if (hours >= 1) return `${hours}h ago`;
   return "just now";
+}
+
+function AuthorAvatar({ name, size = "md" }: { name: string; size?: "md" | "sm" }) {
+  const url = avatarFor(name);
+  const classes = size === "md" ? "w-8 h-8 text-sm" : "w-6 h-6 text-xs";
+  return (
+    <span
+      className={`${classes} rounded-full overflow-hidden border bg-primary/10 text-primary font-medium flex items-center justify-center shrink-0`}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        name.charAt(0).toUpperCase()
+      )}
+    </span>
+  );
+}
+
+/** One row on the vertical timeline: the avatar sits on the line, content right. */
+function TimelineRow({
+  who,
+  dot,
+  children,
+}: {
+  who?: string;
+  dot?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative pl-11">
+      <span className="absolute left-0 top-0.5">
+        {who && !dot ? (
+          <AuthorAvatar name={who} />
+        ) : (
+          <span className="w-8 flex justify-center pt-1.5">
+            <span className="w-2.5 h-2.5 rounded-full border-2 border-border bg-background block" />
+          </span>
+        )}
+      </span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
 }
 
 export default async function ProposalPage({ params }: { params: Promise<{ id: string }> }) {
@@ -167,10 +211,22 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
         {/* What this is and how it is doing comes first — on a phone that means
             before the thread, not after it. */}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
-          {/* ── the thread ── */}
-          <div className="space-y-6 min-w-0 order-2 lg:order-1">
+          {/* ── the thread, github-issue style: one line, avatars on it ── */}
+          <div className="min-w-0 order-2 lg:order-1 relative">
+            <span
+              className="absolute left-4 top-4 bottom-4 w-px bg-border"
+              aria-hidden
+            />
+            <div className="space-y-5">
+            <TimelineRow who={proposal.proposerName}>
             <Card>
-              <CardContent className="pt-6 space-y-3">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <p className="text-sm">
+                  <span className="font-medium">{proposal.proposerName}</span>{" "}
+                  <span className="text-muted-foreground">
+                    proposed this · {ago(proposal.createdAt)}
+                  </span>
+                </p>
                 {proposal.pitch && <p className="font-medium">{proposal.pitch}</p>}
                 <InlineDescription
                   proposalId={proposal.id}
@@ -185,11 +241,13 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 />
               </CardContent>
             </Card>
+            </TimelineRow>
 
             {timeline.map((item, index) => {
               if (item.kind === "comment") {
                 return (
-                  <div key={index} className="rounded-lg border p-4 space-y-2">
+                  <TimelineRow key={index} who={item.comment.authorName}>
+                  <div className="rounded-lg border bg-card p-4 space-y-2">
                     <p className="text-sm">
                       <span className="font-medium">{item.comment.authorName}</span>{" "}
                       <span className="text-muted-foreground">· {ago(item.at)}</span>
@@ -224,95 +282,102 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                       signedIn={!!account}
                     />
                   </div>
+                  </TimelineRow>
                 );
               }
 
               if (item.kind === "revision") {
+                const phrases = describeChanges(item.revision.changes);
                 return (
-                  <div key={index} className="rounded-lg border border-dashed p-4 space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">{item.revision.authorName}</span>{" "}
-                      updated this — version {item.revision.version} · {ago(item.at)}
+                  <TimelineRow key={index} who={item.revision.authorName}>
+                  <div className="text-sm pt-1.5 space-y-1">
+                    <p className="text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {item.revision.authorName}
+                      </span>{" "}
+                      {phrases.join(", ")} · {ago(item.at)}
                     </p>
-                    <div className="font-mono text-xs space-y-0.5">
-                      {item.revision.changes.filter((c) => visibleChange(c.field)).map((change) => (
-                        <div key={change.field}>
-                          <div className="text-destructive">
-                            − {prettyField(change.field)}: {change.from}
-                          </div>
-                          <div className="text-primary">
-                            + {prettyField(change.field)}: {change.to}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+                        what changed, exactly
+                      </summary>
+                      <div className="font-mono mt-1.5 space-y-0.5 rounded-md border border-dashed p-2.5">
+                        {item.revision.changes
+                          .filter((c) => visibleChange(c.field))
+                          .map((change) => (
+                            <div key={change.field}>
+                              <div className="text-destructive">
+                                − {prettyField(change.field)}: {change.from}
+                              </div>
+                              <div className="text-primary">
+                                + {prettyField(change.field)}: {change.to}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </details>
                   </div>
+                  </TimelineRow>
                 );
               }
 
               if (item.kind === "contribution") {
                 const c = item.contribution;
                 return (
-                  <p key={index} className="text-sm text-muted-foreground px-1">
+                  <TimelineRow key={index} dot>
+                  <p className="text-sm text-muted-foreground pt-1.5">
                     <span className="font-medium text-foreground">{c.contributorName}</span>{" "}
                     {c.kind === "ticket" ? "took a ticket" : "chipped in"} —{" "}
                     {c.currency === "eur" ? formatEur(c.grossAmount) : formatTokens(c.grossAmount)}
                     {c.adminFee > 0 && ` (${formatEur(c.adminFee)} admin fee)`} · {ago(item.at)}
                   </p>
+                  </TimelineRow>
                 );
               }
 
               if (item.kind === "rsvp") {
                 return (
-                  <p key={index} className="text-sm text-muted-foreground px-1">
+                  <TimelineRow key={index} dot>
+                  <p className="text-sm text-muted-foreground pt-1.5">
                     <span className="font-medium text-foreground">{item.rsvp.name}</span>{" "}
                     {item.rsvp.state === "going" ? "is interested" : "cannot make it"} · {ago(item.at)}
                   </p>
+                  </TimelineRow>
                 );
               }
 
               if (item.kind === "refund") {
                 return (
-                  <p key={index} className="text-sm text-primary px-1">
+                  <TimelineRow key={index} dot>
+                  <p className="text-sm text-primary pt-1.5">
                     Everyone was refunded — {item.refunds.length}{" "}
                     {item.refunds.length === 1 ? "contribution" : "contributions"} went back ·{" "}
                     {ago(item.at)}
                     {item.note && <span className="text-muted-foreground"> — {item.note}</span>}
                   </p>
+                  </TimelineRow>
                 );
               }
 
               return (
-                <p key={index} className="text-sm px-1">
+                <TimelineRow key={index} dot>
+                <p className="text-sm pt-1.5">
                   <span className="font-medium">{item.by}</span> marked this{" "}
                   {statusLabel(item.status).toLowerCase()} · {ago(item.at)}
                   {item.note && <span className="text-muted-foreground"> — {item.note}</span>}
                 </p>
+                </TimelineRow>
               );
             })}
 
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">Activity</CardTitle>
-                  {photoCount > 0 && (
-                    <Link
-                      href={`/events/${proposal.eventSlug}/photos`}
-                      className="text-sm text-muted-foreground hover:text-primary"
-                    >
-                      {photoCount} {photoCount === 1 ? "photo" : "photos"}
-                    </Link>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ActivityLog items={timeline} slug={proposal.slug} />
-              </CardContent>
-            </Card>
 
-            <CommentBox proposalId={proposal.id} authorName={account?.displayName ?? null} />
+
+            <TimelineRow who={account?.displayName ?? undefined} dot={!account}>
+              <CommentBox proposalId={proposal.id} authorName={account?.displayName ?? null} />
+            </TimelineRow>
 
             {isSteward(account) && proposal.status !== "confirmed" && (
+              <TimelineRow dot>
               <StewardActions
                 proposalId={proposal.id}
                 canConfirm={blockedReason === null}
@@ -323,7 +388,23 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 }
                 blockedReason={blockedReason}
               />
+              </TimelineRow>
             )}
+
+            {/* the ledger, folded away at the end for whoever wants the full record */}
+            <details className="relative pl-11">
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground select-none list-none">
+                <span className="absolute left-0 top-0 w-8 flex justify-center pt-1">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-border bg-background block" />
+                </span>
+                Activity log
+                {photoCount > 0 && ` · ${photoCount} ${photoCount === 1 ? "photo" : "photos"}`} ▸
+              </summary>
+              <div className="mt-3 rounded-lg border bg-card p-4">
+                <ActivityLog items={timeline} slug={proposal.eventSlug} />
+              </div>
+            </details>
+            </div>
           </div>
 
           {/* ── the summary ── */}
