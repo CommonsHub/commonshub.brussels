@@ -69,34 +69,42 @@ export default async function TopUpPage({ params }: { params: Promise<{ symbol: 
               <CardContent>
                 <ul className="space-y-3 text-sm">
                   <li>
+                    <p className="font-medium">Become a member</p>
+                    <p className="text-muted-foreground">
+                      Members can claim every month one free token.
+                    </p>
+                  </li>
+                  <li>
                     <p className="font-medium">Join the weekly park cleaning</p>
                     <p className="text-muted-foreground">
-                      An hour of picking up the park with the neighbours, every week.
+                      Contribute to our common park in front of the Commons Hub. Meet us at noon
+                      sharp. We provide buckets and trash pickers.
                     </p>
                   </li>
                   <li>
-                    <p className="font-medium">Become a member and come to the heartbeat meeting</p>
+                    <p className="font-medium">Sign up for a shift</p>
                     <p className="text-muted-foreground">
-                      The community's weekly pulse — members who show up keep the place steering.
+                      We need volunteers for many different events and bookings happening at the
+                      hub. Sign up for a shift using the /shifts command on Discord.
                     </p>
                   </li>
                   <li>
-                    <p className="font-medium">Steward an event</p>
+                    <p className="font-medium">Organise an event or workshop</p>
                     <p className="text-muted-foreground">
-                      Take responsibility for an event finding its room, its people and its
-                      clean-up.
+                      As you organise an event, members can use their tokens to RSVP. Use them to
+                      pay for the room and keep the change.
                     </p>
                   </li>
                   <li>
-                    <p className="font-medium">Do shifts</p>
+                    <p className="font-medium">Be helpful to other members</p>
                     <p className="text-muted-foreground">
-                      Opening, closing, welcoming — the recurring work that keeps the hub open.
+                      Get tokens directly from other members through the offer and needs market.
                     </p>
                   </li>
                 </ul>
                 <p className="text-sm text-muted-foreground mt-4">
-                  Members with an active subscription can also claim one token every calendar
-                  month, from their profile. Tokens are paid out by the hub bot on Discord. See{" "}
+                  The monthly member token is claimed from your profile. Tokens are paid out by
+                  the hub bot on Discord. See{" "}
                   <Link href="/economy" className="text-primary hover:underline">
                     how the token economy works
                   </Link>
