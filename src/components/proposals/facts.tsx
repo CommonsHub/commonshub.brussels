@@ -13,6 +13,7 @@ import { Loader2, Pencil, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { RoomPicker, type RoomOption, type SlotInput } from "./room-picker";
 import { formatEur, formatTokens } from "@/modules/proposals/funding";
 
@@ -38,6 +39,8 @@ export function ProposalFacts({
   slots: initialSlots,
   roomSlug: initialRoom,
   expectedPeople: initialPeople,
+  minAttendees,
+  maxAttendees,
   tickets: initialTickets,
 }: {
   proposalId: string;
@@ -47,6 +50,8 @@ export function ProposalFacts({
   slots: SlotInput[];
   roomSlug: string | null;
   expectedPeople: number;
+  minAttendees: number | null;
+  maxAttendees: number | null;
   tickets: Tickets;
 }) {
   const router = useRouter();
@@ -54,6 +59,10 @@ export function ProposalFacts({
   const [slots, setSlots] = useState<SlotInput[]>(initialSlots);
   const [roomSlug, setRoomSlug] = useState<string | null>(initialRoom);
   const [people, setPeople] = useState(initialPeople);
+  const [range, setRange] = useState<[number, number]>([
+    minAttendees ?? 5,
+    maxAttendees ?? initialPeople,
+  ]);
   const [tickets, setTickets] = useState<Tickets>(initialTickets);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +126,12 @@ export function ProposalFacts({
           <span key={index}>{chip(whenShort(slot), "dates")}</span>
         ))}
         {chip(roomSlug ? (roomName ?? roomSlug) : "Any room", "room")}
-        {chip(`~${people} people`, "people")}
+        {chip(
+          minAttendees !== null || maxAttendees !== null
+            ? `${minAttendees ?? "any"}–${maxAttendees ?? people} people`
+            : `~${people} people`,
+          "people",
+        )}
         {chip(price, "tickets")}
       </div>
 
@@ -214,19 +228,34 @@ export function ProposalFacts({
 
       {editor === "people" && (
         <div className="rounded-lg border bg-card p-4 space-y-3">
-          <div className="space-y-1 max-w-40">
-            <Label htmlFor="facts-people" className="text-xs">
-              Expected people
-            </Label>
-            <Input
-              id="facts-people"
-              type="number"
-              min={1}
-              value={people}
-              onChange={(e) => setPeople(Number(e.target.value))}
-            />
+          <div className="flex items-baseline justify-between gap-2">
+            <Label className="text-xs">How many people?</Label>
+            <span className="text-sm tabular-nums">
+              {range[0]} – {range[1]}
+            </span>
           </div>
-          <Button size="sm" onClick={() => save({ expectedPeople: people })} disabled={busy}>
+          <Slider
+            min={0}
+            max={100}
+            step={1}
+            value={range}
+            onValueChange={(value) =>
+              setRange([Math.min(...value), Math.max(...value)] as [number, number])
+            }
+            aria-label="Minimum and maximum attendees"
+          />
+          <Button
+            size="sm"
+            onClick={() => {
+              setPeople(range[1]);
+              save({
+                expectedPeople: range[1],
+                minAttendees: range[0] > 0 ? range[0] : null,
+                maxAttendees: range[1],
+              });
+            }}
+            disabled={busy}
+          >
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save
           </Button>
           {error && <p className="text-sm text-destructive">{error}</p>}

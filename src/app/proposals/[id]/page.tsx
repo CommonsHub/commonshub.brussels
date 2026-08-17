@@ -195,6 +195,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
               slots={proposal.slots.map(({ date, start, duration }) => ({ date, start, duration }))}
               roomSlug={proposal.roomSlug}
               expectedPeople={proposal.expectedPeople}
+              minAttendees={proposal.minAttendees}
+              maxAttendees={proposal.maxAttendees}
               tickets={proposal.tickets}
             />
 

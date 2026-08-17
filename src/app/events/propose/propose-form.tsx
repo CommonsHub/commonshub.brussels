@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   fundingTarget,
@@ -65,9 +66,11 @@ export function ProposeForm({
     initial?.slots.length ? initial.slots : [emptySlot()],
   );
   const [roomSlug, setRoomSlug] = useState<string | null>(initial?.roomSlug ?? null);
-  const [expectedPeople, setExpectedPeople] = useState(initial?.expectedPeople ?? 20);
-  const [minAttendees, setMinAttendees] = useState<number | "">(initial?.minAttendees ?? "");
-  const [maxAttendees, setMaxAttendees] = useState<number | "">(initial?.maxAttendees ?? "");
+  const [attendeeRange, setAttendeeRange] = useState<[number, number]>([
+    initial?.minAttendees ?? 5,
+    initial?.maxAttendees ?? initial?.expectedPeople ?? 30,
+  ]);
+  const expectedPeople = attendeeRange[1];
   const [audience, setAudience] = useState<"public" | "members" | "invite">(
     initial?.audience ?? "public",
   );
@@ -191,9 +194,10 @@ export function ProposeForm({
         link: link.trim() || null,
         slots,
         roomSlug,
-        expectedPeople,
-        minAttendees: minAttendees === "" ? null : Number(minAttendees),
-        maxAttendees: maxAttendees === "" ? null : Number(maxAttendees),
+        // The top of the range is what rooms are sized against.
+        expectedPeople: attendeeRange[1],
+        minAttendees: attendeeRange[0] > 0 ? attendeeRange[0] : null,
+        maxAttendees: attendeeRange[1],
         audience,
         tickets: {
           eur: paid && eurPrice !== "" ? Number(eurPrice) : null,
@@ -372,43 +376,27 @@ export function ProposeForm({
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Headcount first: it is what decides which rooms can work at all. */}
-          <div className="flex flex-wrap gap-4">
-            <div className="space-y-1.5 w-32">
-              <Label htmlFor="people">How many people?</Label>
-              <Input
-                id="people"
-                type="number"
-                min={1}
-                value={expectedPeople}
-                onChange={(e) => setExpectedPeople(Number(e.target.value))}
-              />
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label>How many people?</Label>
+              <span className="text-sm tabular-nums">
+                {attendeeRange[0]} – {attendeeRange[1]}
+              </span>
             </div>
-            <div className="space-y-1.5 w-32">
-              <Label htmlFor="min-attendees">Minimum to happen</Label>
-              <Input
-                id="min-attendees"
-                type="number"
-                min={1}
-                placeholder="optional"
-                value={minAttendees}
-                onChange={(e) =>
-                  setMinAttendees(e.target.value === "" ? "" : Number(e.target.value))
-                }
-              />
-            </div>
-            <div className="space-y-1.5 w-32">
-              <Label htmlFor="max-attendees">Maximum</Label>
-              <Input
-                id="max-attendees"
-                type="number"
-                min={1}
-                placeholder="optional"
-                value={maxAttendees}
-                onChange={(e) =>
-                  setMaxAttendees(e.target.value === "" ? "" : Number(e.target.value))
-                }
-              />
-            </div>
+            <Slider
+              min={0}
+              max={100}
+              step={1}
+              value={attendeeRange}
+              onValueChange={(value) =>
+                setAttendeeRange([Math.min(...value), Math.max(...value)] as [number, number])
+              }
+              aria-label="Minimum and maximum attendees"
+            />
+            <p className="text-xs text-muted-foreground">
+              It happens from {attendeeRange[0] || "any number of"}{" "}
+              {attendeeRange[0] === 1 ? "person" : "people"}, and caps at {attendeeRange[1]}.
+            </p>
           </div>
 
           <div className="space-y-2">
