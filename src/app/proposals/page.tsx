@@ -8,6 +8,7 @@ import { listProposals, progressFor, tidyLegacyUrls } from "@/modules/proposals/
 import { formatEur, formatTokens, getRoom } from "@/modules/proposals/funding";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { statusLabel, statusTone } from "@/components/proposals/status";
+import { PrefetchProposals } from "@/components/proposals/prefetch";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ function formatSlot(slot: { date: string; start: string; duration: number }): st
 export default async function ProposalsPage() {
   tidyLegacyUrls();
   const proposals = listProposals();
+  // The ones at the top are the ones people open; have them ready.
+  const prefetchHrefs = proposals.slice(0, 5).map((p) => `/proposals/${p.number}`);
 
   return (
     <div className="min-h-screen py-12">
@@ -48,6 +51,8 @@ export default async function ProposalsPage() {
             </Link>
           </Button>
         </div>
+
+        <PrefetchProposals hrefs={prefetchHrefs} />
 
         {proposals.length === 0 ? (
           <Card>
@@ -68,19 +73,21 @@ export default async function ProposalsPage() {
               const going = proposal.rsvps.filter((r) => r.state === "going").length;
 
               return (
-                <Card key={proposal.id} className="hover:border-primary/50 transition-colors">
+                <Link
+                  key={proposal.id}
+                  href={`/proposals/${proposal.number}`}
+                  className="block group"
+                >
+                <Card className="group-hover:border-primary/50 transition-colors">
                   <CardContent className="pt-6 space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1 min-w-0">
-                        <Link
-                          href={`/proposals/${proposal.number}`}
-                          className="text-lg font-semibold hover:text-primary"
-                        >
+                        <span className="text-lg font-semibold group-hover:text-primary">
                           <span className="text-muted-foreground font-normal">
                             #{proposal.number}
                           </span>{" "}
                           {proposal.title}
-                        </Link>
+                        </span>
                         {proposal.pitch && (
                           <p className="text-sm text-muted-foreground">{proposal.pitch}</p>
                         )}
@@ -120,6 +127,7 @@ export default async function ProposalsPage() {
                     </p>
                   </CardContent>
                 </Card>
+                </Link>
               );
             })}
           </div>
