@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getProposal } from "@/modules/proposals/store";
+import { addContribution, getProposal, setRsvp } from "@/modules/proposals/store";
 import { currentCaller } from "@/modules/identity/server";
 import { createEuroCheckout, stripeConfigured } from "@/modules/payments/euro";
-import { buildPaymentRequest, tokensConfigured } from "@/modules/payments/tokens";
+import { collectingAddress, tokensConfigured } from "@/modules/payments/tokens";
+import { sendFromDiscordUser, cardPaymentsConfigured } from "@/modules/payments/card";
 import { maxTokenContribution } from "@/modules/payments/chain";
-import { splitEuroContribution } from "@/modules/proposals/funding";
+import { splitEuroContribution, splitTokenContribution } from "@/modules/proposals/funding";
 
 const schema = z.object({
   currency: z.enum(["eur", "tokens"]),
@@ -40,12 +41,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { currency, kind, amount, seats } = parsed.data;
 
   if (currency === "tokens") {
-    if (!tokensConfigured()) {
-      return NextResponse.json(
-        { error: "Token payments are not switched on for this deployment yet." },
-        { status: 503 },
-      );
-    }
     const cap = maxTokenContribution();
     if (cap !== null && amount > cap) {
       return NextResponse.json(
@@ -53,7 +48,65 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         { status: 400 },
       );
     }
-    return NextResponse.json({ tokenRequest: await buildPaymentRequest(amount, proposal.id) });
+
+    if (!caller.account.discordId) {
+      // Their tokens live in the account derived from their Discord id — we
+      // cannot move what we cannot locate.
+      return NextResponse.json(
+        { error: "Connect your Discord account first — that is where your tokens live.", needsDiscord: true },
+        { status: 409 },
+      );
+    }
+
+    if (!cardPaymentsConfigured() || !tokensConfigured()) {
+      return NextResponse.json(
+        { error: "Token payments are not switched on for this deployment yet." },
+        { status: 503 },
+      );
+    }
+
+    const to = await collectingAddress(proposal.id);
+    if (!to) {
+      return NextResponse.json(
+        { error: "This proposal has nowhere to collect into yet." },
+        { status: 503 },
+      );
+    }
+
+    // Same mechanism as the bot's /send, without the round-trip through Discord.
+    const transfer = await sendFromDiscordUser({
+      discordId: caller.account.discordId,
+      to,
+      amount,
+      description: `${kind === "ticket" ? "Ticket" : "Contribution"} — ${proposal.title} (#${proposal.number})`,
+    });
+    if (!transfer.ok) return NextResponse.json({ error: transfer.error }, { status: 502 });
+
+    const split = splitTokenContribution(amount);
+    const contribution = addContribution(proposal.id, {
+      kind,
+      currency: "tokens",
+      grossAmount: split.charged,
+      adminFee: 0,
+      netAmount: split.net,
+      contributorId: caller.account.id,
+      contributorName: caller.account.displayName,
+      seats: kind === "ticket" ? seats : 0,
+      reference: transfer.txHash,
+      fromAddress: transfer.from,
+    });
+
+    if (kind === "ticket" && seats > 0) {
+      setRsvp(proposal.id, {
+        contributorId: caller.account.id,
+        name: caller.account.displayName,
+        state: "going",
+        seats,
+        contributionId: contribution?.id,
+      });
+    }
+
+    return NextResponse.json({ contribution, explorerUrl: transfer.explorerUrl });
   }
 
   if (!stripeConfigured()) {

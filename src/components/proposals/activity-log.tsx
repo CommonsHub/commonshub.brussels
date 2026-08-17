@@ -105,7 +105,7 @@ export function ActivityLog({ items, slug }: { items: TimelineItem[]; slug: stri
           return (
             <li key={index}>
               <span className="font-medium">{item.rsvp.name}</span>{" "}
-              {item.rsvp.state === "going" ? "is coming" : "cannot make it"}
+              {item.rsvp.state === "going" ? "is interested" : "cannot make it"}
               {time}
             </li>
           );

@@ -207,7 +207,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 return (
                   <p key={index} className="text-sm text-muted-foreground px-1">
                     <span className="font-medium text-foreground">{item.rsvp.name}</span>{" "}
-                    {item.rsvp.state === "going" ? "is coming" : "cannot make it"} · {ago(item.at)}
+                    {item.rsvp.state === "going" ? "is interested" : "cannot make it"} · {ago(item.at)}
                   </p>
                 );
               }

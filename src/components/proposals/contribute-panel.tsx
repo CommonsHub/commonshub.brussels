@@ -2,23 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ExternalLink } from "lucide-react";
+import { ArrowLeft, CreditCard, Coins, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatTokens } from "@/modules/proposals/funding";
 
-interface TokenRequest {
-  amount: number;
-  account: string | null;
-  command: string;
-  symbol: string;
-}
+type Step = "closed" | "currency" | "eur" | "tokens";
 
 /**
- * Chip in towards the room, or buy a ticket. Euros go through the card
- * checkout; tokens are sent with the Discord bot people already use, and we
- * watch for the transfer.
+ * One door in: Contribute. Behind it, the choice of currency, then the amount.
+ * Tokens move straight from the person's own account — the same transfer the
+ * Discord bot would make, done here because they are signed in with Discord.
  */
 export function ContributePanel({
   proposalId,
@@ -40,11 +35,11 @@ export function ContributePanel({
   tokenBalance: number | null;
 }) {
   const router = useRouter();
+  const [step, setStep] = useState<Step>("closed");
   const [amount, setAmount] = useState<number | "">(ticketEur ?? 20);
   const [tokenAmount, setTokenAmount] = useState<number | "">(ticketTokens ?? 1);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tokenRequest, setTokenRequest] = useState<TokenRequest | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
 
   const hasTicket = !!(ticketEur || ticketTokens);
@@ -88,7 +83,8 @@ export function ContributePanel({
         amount: Number(tokenAmount),
         seats: kind === "ticket" ? 1 : 0,
       });
-      setTokenRequest(data.tokenRequest);
+      setConfirmation(data.explorerUrl ?? "done");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "That did not work.");
     } finally {
@@ -96,27 +92,7 @@ export function ContributePanel({
     }
   }
 
-  async function confirmTokenPayment() {
-    if (!tokenRequest) return;
-    setError(null);
-    setBusy("confirm");
-    try {
-      const data = await post(`/api/proposals/${proposalId}/contribute/token`, {
-        amount: tokenRequest.amount,
-        kind,
-        seats: kind === "ticket" ? 1 : 0,
-      });
-      setConfirmation(data.explorerUrl ?? "recorded");
-      setTokenRequest(null);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "We could not find that payment yet.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function rsvpFree() {
+  async function interested() {
     setError(null);
     setBusy("rsvp");
     try {
@@ -133,7 +109,7 @@ export function ContributePanel({
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Sign in to say you are coming or to chip in towards the room.
+          Sign in to say you are interested or to chip in towards the room.
         </p>
         <Button asChild className="w-full">
           <a href="/signin">Sign in</a>
@@ -146,7 +122,7 @@ export function ContributePanel({
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium">Thank you — that is counted.</p>
-        {confirmation !== "recorded" && (
+        {confirmation !== "done" && (
           <a
             href={confirmation}
             target="_blank"
@@ -160,49 +136,11 @@ export function ContributePanel({
     );
   }
 
-  if (tokenRequest) {
+  // ── the amount, in euros ──
+  if (step === "eur") {
     return (
       <div className="space-y-3">
-        <p className="text-sm">
-          Send <span className="font-medium tabular-nums">{tokenRequest.amount}</span>{" "}
-          {tokenRequest.symbol} with the hub bot on Discord:
-        </p>
-        <code className="block rounded-md bg-muted px-3 py-2 text-sm">{tokenRequest.command}</code>
-        <p className="text-xs text-muted-foreground">
-          The odd last digits are how we recognise your payment — send exactly that amount.
-        </p>
-        <Button onClick={confirmTokenPayment} disabled={busy === "confirm"} className="w-full">
-          {busy === "confirm" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          I&apos;ve sent it
-        </Button>
-        <Button variant="ghost" size="sm" className="w-full" onClick={() => setTokenRequest(null)}>
-          Cancel
-        </Button>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {hasTicket && freeForMembers && isMember && (
-        <Button onClick={rsvpFree} disabled={busy === "rsvp"} className="w-full">
-          {busy === "rsvp" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Come along — members are free
-        </Button>
-      )}
-
-      {!hasTicket && (
-        <Button onClick={rsvpFree} disabled={busy === "rsvp"} className="w-full">
-          {busy === "rsvp" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          I&apos;m coming
-        </Button>
-      )}
-
-      <div className="space-y-2">
-        <Label htmlFor="eur-amount" className="text-xs uppercase tracking-wide text-muted-foreground">
-          {hasTicket ? "Ticket in euros" : "Chip in, in euros"}
-        </Label>
+        <Label htmlFor="eur-amount">{hasTicket ? "Your ticket, in euros" : "Chip in, in euros"}</Label>
         <div className="flex gap-2">
           <Input
             id="eur-amount"
@@ -213,7 +151,7 @@ export function ContributePanel({
             onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
             className="w-24"
           />
-          <Button onClick={payWithCard} disabled={busy === "eur" || !amount} className="flex-1">
+          <Button onClick={payWithCard} disabled={busy !== null || !amount} className="flex-1">
             {busy === "eur" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Pay by card
           </Button>
@@ -221,15 +159,41 @@ export function ContributePanel({
         <p className="text-xs text-muted-foreground">
           The hub keeps 10% of euro payments as its admin fee; the rest goes towards the room.
         </p>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button variant="ghost" size="sm" onClick={() => setStep("currency")} disabled={busy !== null}>
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
       </div>
+    );
+  }
 
-      <div className="space-y-2">
+  // ── the amount, in tokens ──
+  if (step === "tokens") {
+    if (!discordLinked) {
+      return (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Your tokens live in the account behind your Discord — connect it and you can pay from
+            here directly.
+          </p>
+          <Button asChild className="w-full">
+            <a href="/signin">Connect Discord</a>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setStep("currency")}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+          </Button>
+        </div>
+      );
+    }
+
+    const overdrawn =
+      tokenBalance !== null && typeof tokenAmount === "number" && tokenAmount > tokenBalance;
+
+    return (
+      <div className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <Label
-            htmlFor="token-amount"
-            className="text-xs uppercase tracking-wide text-muted-foreground"
-          >
-            {hasTicket ? "Ticket in tokens" : "Chip in, in tokens"}
+          <Label htmlFor="token-amount">
+            {hasTicket ? "Your ticket, in tokens" : "Chip in, in tokens"}
           </Label>
           {tokenBalance !== null && (
             <span className="text-xs text-muted-foreground tabular-nums">
@@ -248,32 +212,72 @@ export function ContributePanel({
             className="w-24"
           />
           <Button
-            variant="outline"
             onClick={payWithTokens}
-            disabled={busy === "tokens" || !tokenAmount || !discordLinked}
+            disabled={busy !== null || !tokenAmount || overdrawn}
             className="flex-1"
           >
             {busy === "tokens" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Pay with tokens
+            Contribute {tokenAmount || "…"} tokens
           </Button>
         </div>
-        {tokenBalance !== null && typeof tokenAmount === "number" && tokenAmount > tokenBalance && (
+        {overdrawn && (
           <p className="text-xs text-amber-600 dark:text-amber-500">
             That is more than you hold. Earn some at the hub, or pay in euros.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          {discordLinked
-            ? "Sent with the hub bot on Discord. No admin fee on token payments."
-            : "Connect Discord to pay with tokens — that is where your tokens live."}
+          Sent from your own account, straight from here. No admin fee on tokens.
         </p>
-        {!discordLinked && (
-          <Button variant="ghost" size="sm" asChild className="px-0">
-            <a href="/signin">Connect Discord</a>
-          </Button>
-        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button variant="ghost" size="sm" onClick={() => setStep("currency")} disabled={busy !== null}>
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
       </div>
+    );
+  }
 
+  // ── euros or tokens ──
+  if (step === "currency") {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium">How do you want to contribute?</p>
+        <Button variant="outline" className="w-full justify-start" onClick={() => setStep("eur")}>
+          <CreditCard className="w-4 h-4 mr-2" />
+          In euros, by card
+        </Button>
+        <Button variant="outline" className="w-full justify-start" onClick={() => setStep("tokens")}>
+          <Coins className="w-4 h-4 mr-2" />
+          In tokens
+          {discordLinked && tokenBalance !== null && (
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+              you hold {formatTokens(tokenBalance)}
+            </span>
+          )}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setStep("closed")}>
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
+      </div>
+    );
+  }
+
+  // ── closed: one door in ──
+  const freeForThisPerson = !hasTicket || (freeForMembers && isMember);
+
+  return (
+    <div className="space-y-2">
+      <Button onClick={() => setStep("currency")} className="w-full">
+        Contribute
+      </Button>
+      {freeForThisPerson && (
+        <Button variant="outline" onClick={interested} disabled={busy !== null} className="w-full">
+          {busy === "rsvp" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          I&apos;m interested
+        </Button>
+      )}
+      {hasTicket && freeForMembers && isMember && (
+        <p className="text-xs text-muted-foreground text-center">Members come free.</p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );
