@@ -26,12 +26,61 @@ function env(name: string): string | undefined {
   return value && value.trim() ? value.trim() : undefined;
 }
 
-export const CHAIN_ID = Number(env("TOKEN_CHAIN_ID") ?? configured.chainId);
-export const RPC_URL = env("TOKEN_RPC_URL") ?? env("CELO_RPC_URL") ?? configured.rpcUrl;
-export const EXPLORER_URL = env("TOKEN_EXPLORER_URL") ?? configured.explorerUrl;
-export const TOKEN_ADDRESS = (env("TOKEN_ADDRESS") ?? configured.address) as Address;
-export const TOKEN_DECIMALS = Number(env("TOKEN_DECIMALS") ?? configured.decimals);
-export const TOKEN_SYMBOL = env("TOKEN_SYMBOL") ?? configured.symbol;
+/**
+ * One switch: TOKEN_NETWORK=testnet points everything at Celo Sepolia and the
+ * tCHT test token; mainnet (the default) is CHT on Celo from settings.json.
+ * The individual TOKEN_* variables still win over either preset, for the odd
+ * case where one value has to differ.
+ */
+interface NetworkPreset {
+  chainId: number;
+  chainName: string;
+  rpcUrl: string;
+  explorerUrl: string;
+  address: string;
+  symbol: string;
+  decimals: number;
+}
+
+const PRESETS: Record<"mainnet" | "testnet", NetworkPreset> = {
+  mainnet: {
+    chainId: configured.chainId,
+    chainName: configured.chain,
+    rpcUrl: configured.rpcUrl,
+    explorerUrl: configured.explorerUrl,
+    address: configured.address,
+    symbol: configured.symbol,
+    decimals: configured.decimals,
+  },
+  testnet: {
+    chainId: 11142220,
+    chainName: "Celo Sepolia",
+    rpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
+    explorerUrl: "https://celo-sepolia.blockscout.com",
+    // tCHT, deployed 2026-08-17 by scripts/deploy-test-token.mjs. Open mint.
+    address: "0xb9c79781d281f0117d8eb296fe0a6997d66fda95",
+    symbol: "tCHT",
+    decimals: 6,
+  },
+};
+
+export type TokenNetwork = keyof typeof PRESETS;
+
+export function tokenNetwork(): TokenNetwork {
+  const raw = (env("TOKEN_NETWORK") ?? "mainnet").toLowerCase();
+  if (["testnet", "celo-sepolia", "sepolia", "test"].includes(raw)) return "testnet";
+  return "mainnet";
+}
+
+const preset = PRESETS[tokenNetwork()];
+
+export const CHAIN_ID = Number(env("TOKEN_CHAIN_ID") ?? preset.chainId);
+export const CHAIN_NAME = env("TOKEN_CHAIN_NAME") ?? preset.chainName;
+export const RPC_URL = env("TOKEN_RPC_URL") ?? env("CELO_RPC_URL") ?? preset.rpcUrl;
+export const EXPLORER_URL = env("TOKEN_EXPLORER_URL") ?? preset.explorerUrl;
+export const TOKEN_ADDRESS = (env("TOKEN_ADDRESS") ?? preset.address) as Address;
+export const TOKEN_DECIMALS = Number(env("TOKEN_DECIMALS") ?? preset.decimals);
+export const TOKEN_SYMBOL = env("TOKEN_SYMBOL") ?? preset.symbol;
 
 /**
  * Built from the config rather than imported from viem/chains, so an override
@@ -39,7 +88,7 @@ export const TOKEN_SYMBOL = env("TOKEN_SYMBOL") ?? configured.symbol;
  */
 export const chain: Chain = defineChain({
   id: CHAIN_ID,
-  name: env("TOKEN_CHAIN_NAME") ?? configured.chain,
+  name: CHAIN_NAME,
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
   blockExplorers: { default: { name: "explorer", url: EXPLORER_URL } },

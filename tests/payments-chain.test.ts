@@ -4,6 +4,7 @@
  */
 
 const ENV_KEYS = [
+  "TOKEN_NETWORK",
   "TOKEN_CHAIN_ID",
   "TOKEN_RPC_URL",
   "CELO_RPC_URL",
@@ -59,6 +60,23 @@ describe("the chain config", () => {
     expect(chain.RPC_URL).toBe("https://alfajores.example.org");
     expect(chain.TOKEN_ADDRESS).toBe("0x1111111111111111111111111111111111111111");
     expect(chain.TOKEN_SYMBOL).toBe("tCHT");
+  });
+
+  it("flips wholesale to the testnet with one variable", () => {
+    process.env.TOKEN_NETWORK = "testnet";
+    const chain = freshChain();
+    expect(chain.CHAIN_ID).toBe(11142220);
+    expect(chain.CHAIN_NAME).toBe("Celo Sepolia");
+    expect(chain.TOKEN_SYMBOL).toBe("tCHT");
+    expect(chain.TOKEN_ADDRESS.toLowerCase()).toBe(
+      "0xb9c79781d281f0117d8eb296fe0a6997d66fda95",
+    );
+    expect(chain.RPC_URL).toContain("celo-sepolia");
+    expect(chain.EXPLORER_URL).toContain("blockscout");
+
+    // A specific override still wins over the preset.
+    process.env.TOKEN_SYMBOL = "XYZ";
+    expect(freshChain().TOKEN_SYMBOL).toBe("XYZ");
   });
 
   it("has no cap unless one is set, and ignores nonsense", () => {

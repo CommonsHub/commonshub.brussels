@@ -60,6 +60,7 @@ interface StatusData {
     address: string | null;
     explorerUrl: string | null;
     chainId: number;
+    chainName?: string;
     gasBalance: number | null;
     gasSymbol: string;
     low: boolean;
@@ -350,9 +351,10 @@ export default function StatusPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm text-muted-foreground">Chain</span>
                     <span className="text-sm">
-                      {data.proposalSigner.chainId === 42220
-                        ? "Celo mainnet"
-                        : `chain ${data.proposalSigner.chainId}`}
+                      {data.proposalSigner.chainName ??
+                        (data.proposalSigner.chainId === 42220
+                          ? "Celo mainnet"
+                          : `chain ${data.proposalSigner.chainId}`)}
                     </span>
                   </div>
                 </>

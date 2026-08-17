@@ -8,7 +8,7 @@
  */
 
 import { formatUnits, type Address } from "viem";
-import { EXPLORER_URL, TOKEN_DECIMALS, TOKEN_SYMBOL, CHAIN_ID, publicClient } from "./chain";
+import { CHAIN_ID, CHAIN_NAME, EXPLORER_URL, TOKEN_DECIMALS, TOKEN_SYMBOL, publicClient } from "./chain";
 import { balanceOf } from "./tokens";
 import { isDeployed, predictSafeAddress, safesConfigured, signerAccount } from "./safe";
 
@@ -77,6 +77,7 @@ export interface SignerStatus {
   address: string | null;
   explorerUrl: string | null;
   chainId: number;
+  chainName: string;
   /** Native balance, the one that pays for gas. */
   gasBalance: number | null;
   gasSymbol: string;
@@ -95,6 +96,7 @@ export async function signerStatus(): Promise<SignerStatus> {
     address: null,
     explorerUrl: null,
     chainId: CHAIN_ID,
+    chainName: CHAIN_NAME,
     gasBalance: null,
     gasSymbol: "CELO",
     low: false,
