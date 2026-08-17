@@ -79,6 +79,7 @@ export interface Me {
   hasEmail: boolean;
   hasDiscord: boolean;
   hasPasskey: boolean;
+  avatarUrl?: string | null;
 }
 
 // ── passkeys ───────────────────────────────────────────────────────────────

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createWalletClient, http, parseAbi, parseUnits } from "viem";
+import { createWalletClient, parseAbi, parseUnits } from "viem";
 import {
   chain,
   EXPLORER_URL,
-  RPC_URL,
+  transport,
   TOKEN_ADDRESS,
   TOKEN_DECIMALS,
   TOKEN_SYMBOL,
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const wallet = createWalletClient({ account: signerAccount(), chain, transport: http(RPC_URL) });
+    const wallet = createWalletClient({ account: signerAccount(), chain, transport });
     const hash = await wallet.writeContract({
       address: TOKEN_ADDRESS,
       abi,

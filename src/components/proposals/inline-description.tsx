@@ -5,7 +5,7 @@
  * description" (or "edit") and writes right here — no separate page.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ export function InlineDescription({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(description);
+  // What we show: the save shows immediately, and the server render catches up.
+  const [current, setCurrent] = useState(description);
+  useEffect(() => setCurrent(description), [description]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +40,7 @@ export function InlineDescription({
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || "That did not save.");
+      setCurrent(draft.trim());
       setEditing(false);
       router.refresh();
     } catch (err) {
@@ -65,7 +69,7 @@ export function InlineDescription({
             size="sm"
             variant="ghost"
             onClick={() => {
-              setDraft(description);
+              setDraft(current);
               setEditing(false);
             }}
             disabled={busy}
@@ -77,10 +81,10 @@ export function InlineDescription({
     );
   }
 
-  if (description) {
+  if (current) {
     return (
       <div className="space-y-2">
-        <p className="text-muted-foreground whitespace-pre-wrap">{description}</p>
+        <p className="text-muted-foreground whitespace-pre-wrap">{current}</p>
         {mayEdit && (
           <button
             type="button"

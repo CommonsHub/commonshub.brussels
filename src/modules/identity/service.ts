@@ -394,6 +394,16 @@ export function isMember(account: Account | null | undefined): boolean {
 
 /** What the browser is allowed to know about the signed-in person. */
 export function publicProfile(account: Account) {
+  // Best-effort picture from the contributors dataset; the initial otherwise.
+  // Required lazily so the identity module stays importable in tests without a dataset.
+  let avatarUrl: string | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { avatarFor } = require("@/modules/proposals/avatars") as typeof import("@/modules/proposals/avatars");
+    avatarUrl = avatarFor(account.displayName);
+  } catch {
+    avatarUrl = null;
+  }
   return {
     id: account.id,
     displayName: account.displayName,
@@ -405,6 +415,7 @@ export function publicProfile(account: Account) {
     hasEmail: !!account.email,
     hasDiscord: !!account.discordId,
     hasPasskey: (account.passkeys ?? []).length > 0,
+    avatarUrl,
   };
 }
 

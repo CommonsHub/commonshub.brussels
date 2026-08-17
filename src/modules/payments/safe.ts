@@ -16,7 +16,6 @@ import {
   concatHex,
   createWalletClient,
   encodeFunctionData,
-  http,
   keccak256,
   padHex,
   parseAbi,
@@ -25,7 +24,7 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { chain, publicClient, RPC_URL } from "./chain";
+import { chain, publicClient, transport } from "./chain";
 
 /** Safe 1.4.1, deployed on Celo at the canonical addresses. */
 export const SAFE_PROXY_FACTORY = "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67" as Address;
@@ -182,11 +181,7 @@ export async function isDeployed(address: Address): Promise<boolean> {
 // ── deploying, and moving money ────────────────────────────────────────────
 
 function walletClient() {
-  return createWalletClient({
-    account: signerAccount(),
-    chain,
-    transport: http(RPC_URL),
-  });
+  return createWalletClient({ account: signerAccount(), chain, transport });
 }
 
 /** Deploy the Safe if it is not there yet. Only worth doing when funds move. */

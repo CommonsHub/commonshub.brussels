@@ -7,7 +7,7 @@
  * come from settings.json, which today means CHT on Celo mainnet.
  */
 
-import { createPublicClient, defineChain, http, type Address, type Chain } from "viem";
+import { createPublicClient, defineChain, fallback, http, type Address, type Chain } from "viem";
 import settings from "@/settings/settings.json";
 
 const configured = settings.contributionToken as {
@@ -55,7 +55,7 @@ const PRESETS: Record<"mainnet" | "testnet", NetworkPreset> = {
   testnet: {
     chainId: 11142220,
     chainName: "Celo Sepolia",
-    rpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
+    rpcUrl: "https://celo-sepolia.drpc.org",
     explorerUrl: "https://celo-sepolia.blockscout.com",
     // tCHT, deployed 2026-08-17 by scripts/deploy-test-token.mjs. Open mint.
     address: "0xb9c79781d281f0117d8eb296fe0a6997d66fda95",
@@ -94,7 +94,22 @@ export const chain: Chain = defineChain({
   blockExplorers: { default: { name: "explorer", url: EXPLORER_URL } },
 });
 
-export const publicClient = createPublicClient({ chain, transport: http(RPC_URL) });
+/**
+ * More than one way to reach the chain: public RPCs flake, and a wallet that
+ * reads as empty because one endpoint hiccuped is worse than a slow answer.
+ */
+const FALLBACK_RPCS: Record<TokenNetwork, string[]> = {
+  mainnet: ["https://forno.celo.org", "https://celo.drpc.org"],
+  testnet: ["https://celo-sepolia.drpc.org", "https://forno.celo-sepolia.celo-testnet.org"],
+};
+
+const rpcUrls = Array.from(new Set([RPC_URL, ...FALLBACK_RPCS[tokenNetwork()]]));
+
+export const transport = fallback(
+  rpcUrls.map((url) => http(url, { timeout: 8_000, retryCount: 1 })),
+);
+
+export const publicClient = createPublicClient({ chain, transport });
 
 /**
  * The most tokens one contribution may move on this deployment. Staging sets

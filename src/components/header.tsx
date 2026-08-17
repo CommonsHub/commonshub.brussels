@@ -250,6 +250,7 @@ export function Header() {
                     className="flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent transition-colors"
                   >
                     <Avatar className="w-10 h-10">
+                      <AvatarImage src={hubAccount.avatarUrl || undefined} />
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {hubAccount.displayName.charAt(0).toUpperCase()}
                       </AvatarFallback>

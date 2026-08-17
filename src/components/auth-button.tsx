@@ -125,6 +125,7 @@ export function AuthButton() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="rounded-full">
             <Avatar className="w-8 h-8">
+              <AvatarImage src={hubAccount.avatarUrl || undefined} />
               <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                 {hubAccount.displayName.charAt(0).toUpperCase()}
               </AvatarFallback>
