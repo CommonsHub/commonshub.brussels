@@ -43,6 +43,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         { status: 409 },
       );
     }
+    // An event is at least two people from the community, each with a token in.
+    const supporters = new Set(
+      proposal.rsvps.filter((r) => r.state === "going").map((r) => r.contributorId),
+    ).size;
+    const needed = Math.max(2, proposal.minAttendees ?? 2);
+    if (status === "confirmed" && supporters < needed) {
+      return NextResponse.json(
+        {
+          error: `It needs at least ${needed} people from the community coming — each RSVP puts a token behind it — before it can be confirmed.`,
+        },
+        { status: 409 },
+      );
+    }
     const slot = confirmedSlotId ?? proposal.confirmedSlotId;
     if (status === "confirmed" && !slot) {
       return NextResponse.json({ error: "Pick which date it is happening on first." }, { status: 409 });

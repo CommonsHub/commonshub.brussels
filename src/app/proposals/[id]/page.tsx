@@ -13,7 +13,9 @@ import { isMember, isSteward } from "@/modules/identity/service";
 import { proposalTreasury } from "@/modules/payments/treasury";
 import { userWallet } from "@/modules/payments/user-wallet";
 import { FundingMeter } from "@/components/proposals/funding-meter";
-import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
+import { statusLabel, statusTone } from "@/components/proposals/status";
+import { StatusLine } from "@/components/proposals/status-line";
+import { Supporters } from "@/components/proposals/supporters";
 import { Contributors } from "@/components/proposals/contributors";
 import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
@@ -148,6 +150,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   );
   const going = proposal.rsvps.filter((r) => r.state === "going");
   const seats = going.reduce((sum, r) => sum + r.seats, 0);
+  const supporterCount = new Set(going.map((r) => r.contributorId)).size;
+  const missingPeople = Math.max(0, Math.max(2, proposal.minAttendees ?? 2) - supporterCount);
   const confirmedSlot = proposal.slots.find((s) => s.id === proposal.confirmedSlotId);
 
   const blockedReason = !funding.funded
@@ -167,70 +171,51 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
           </Button>
         </Link>
 
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-          <div className="space-y-2 min-w-0">
-            <h1 className="text-3xl font-bold">{proposal.title}</h1>
-            <p className="text-muted-foreground">
-              #{proposal.number} · proposed by {proposal.proposerName} · {ago(proposal.createdAt)} ·
-              version {proposal.version}
-              {mayEdit && (
-                <>
-                  {" · "}
-                  <Link
-                    href={`/proposals/${proposal.number}/edit`}
-                    className="text-primary hover:underline inline-flex items-center gap-1"
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> edit
-                  </Link>
-                </>
-              )}
-            </p>
+        <div className="space-y-3 mb-8">
+          <h1 className="text-3xl font-bold">{proposal.title}</h1>
 
-            {/* The facts at a glance — and, for the author, each one editable in place. */}
-            <ProposalFacts
-              proposalId={proposal.id}
-              mayEdit={mayEdit}
-              rooms={roomOptions}
-              roomName={room?.name ?? null}
-              slots={proposal.slots.map(({ date, start, duration }) => ({ date, start, duration }))}
-              roomSlug={proposal.roomSlug}
-              expectedPeople={proposal.expectedPeople}
-              minAttendees={proposal.minAttendees}
-              maxAttendees={proposal.maxAttendees}
-              tickets={proposal.tickets}
-            />
+          {/* date, time, place — the facts, tappable for the author */}
+          <ProposalFacts
+            proposalId={proposal.id}
+            mayEdit={mayEdit}
+            rooms={roomOptions}
+            roomName={room?.name ?? null}
+            slots={proposal.slots.map(({ date, start, duration }) => ({ date, start, duration }))}
+            roomSlug={proposal.roomSlug}
+            expectedPeople={proposal.expectedPeople}
+            minAttendees={proposal.minAttendees}
+            maxAttendees={proposal.maxAttendees}
+            tickets={proposal.tickets}
+          />
 
-            <Link
-              href={`/events/${proposal.eventSlug}`}
-              className="text-sm text-primary hover:underline"
-            >
-              See the event page →
+          <p className="text-sm text-muted-foreground">
+            Proposed by {proposal.proposerName} · {ago(proposal.createdAt)}
+            {mayEdit && (
+              <>
+                {" · "}
+                <Link
+                  href={`/proposals/${proposal.number}/edit`}
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> edit
+                </Link>
+              </>
+            )}
+            {" · "}
+            <Link href={`/events/${proposal.eventSlug}`} className="text-primary hover:underline">
+              event page →
             </Link>
-          </div>
-          <Badge variant={statusTone(proposal.status)} className="text-sm">
-            {statusLabel(proposal.status)}
-          </Badge>
+          </p>
+
+          <StatusLine status={proposal.status} />
         </div>
 
         {/* What this is and how it is doing comes first — on a phone that means
             before the thread, not after it. */}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
-          {/* ── the thread, github-issue style: one line, avatars on it ── */}
-          <div className="min-w-0 order-2 lg:order-1 relative">
-            <span
-              className="absolute left-4 top-4 bottom-4 w-px bg-border"
-              aria-hidden
-            />
-            <div className="space-y-5">
-            <TimelineRow who={proposal.proposerName}>
+          <div className="min-w-0 space-y-5">
             <Card>
               <CardContent className="pt-4 pb-4 space-y-3">
-                <p className="text-sm">
-                  <span className="font-medium">{proposal.proposerName}</span>{" "}
-                  <span className="text-muted-foreground">
-                    proposed this · {ago(proposal.createdAt)}
-                  </span>
-                </p>
                 {proposal.pitch && <p className="font-medium">{proposal.pitch}</p>}
                 <InlineDescription
                   proposalId={proposal.id}
@@ -245,8 +230,50 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 />
               </CardContent>
             </Card>
-            </TimelineRow>
 
+            {/* who is already behind it */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Going &amp; supporting</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Supporters proposal={proposal} />
+              </CardContent>
+            </Card>
+
+            {/* the ask, in one sentence, then the button */}
+            <Card className="border-primary/40">
+              <CardContent className="pt-5 pb-5 space-y-3">
+                {missingPeople > 0 ? (
+                  <p className="text-sm font-medium">
+                    Missing {missingPeople} more {missingPeople === 1 ? "person" : "people"} from
+                    the community.
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-primary">
+                    Enough people are in — it can happen.
+                  </p>
+                )}
+                {proposal.maxAttendees !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    {seats} going · max {proposal.maxAttendees}
+                  </p>
+                )}
+                <AttendButton
+                  proposalId={proposal.id}
+                  dateSet={!!proposal.confirmedSlotId}
+                  alreadyGoing={!!account && going.some((r) => r.contributorId === account.id)}
+                  full={proposal.maxAttendees !== null && seats >= proposal.maxAttendees}
+                  symbol={TOKEN_SYMBOL}
+                  signedIn={!!account}
+                />
+              </CardContent>
+            </Card>
+
+            {/* ── the thread, github-issue style: one line, avatars on it ── */}
+            <div className="relative">
+              <span className="absolute left-4 top-4 bottom-4 w-px bg-border" aria-hidden />
+              <div className="space-y-5">
             {timeline.map((item, index) => {
               if (item.kind === "comment") {
                 return (
@@ -408,11 +435,12 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 <ActivityLog items={timeline} slug={proposal.eventSlug} />
               </div>
             </details>
+              </div>
             </div>
           </div>
 
           {/* ── the summary ── */}
-          <aside className="space-y-6 order-1 lg:order-2 lg:sticky lg:top-6">
+          <aside className="space-y-6 lg:sticky lg:top-6">
             {/* The main call to action: gather what this needs. */}
             <Card className="border-primary/40">
               <CardContent className="pt-6 space-y-5">
@@ -423,34 +451,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                   </p>
                 </div>
 
-                {/* Coming along is the first way to help. */}
-                <div className="space-y-2">
-                  <p className="text-sm tabular-nums">
-                    <span className="font-medium">{seats}</span>
-                    <span className="text-muted-foreground">
-                      {proposal.minAttendees !== null && ` of at least ${proposal.minAttendees}`}
-                      {" coming"}
-                      {proposal.maxAttendees !== null && ` · max ${proposal.maxAttendees}`}
-                    </span>
-                  </p>
-                  {proposal.minAttendees !== null && seats < proposal.minAttendees && (
-                    <p className="text-xs text-amber-600 dark:text-amber-500">
-                      Still {proposal.minAttendees - seats} short of the minimum for it to happen.
-                    </p>
-                  )}
-                  <AttendButton
-                    proposalId={proposal.id}
-                    dateSet={!!proposal.confirmedSlotId}
-                    alreadyGoing={!!account && going.some((r) => r.contributorId === account.id)}
-                    full={
-                      proposal.maxAttendees !== null && seats >= proposal.maxAttendees
-                    }
-                    symbol={TOKEN_SYMBOL}
-                    signedIn={!!account}
-                  />
-                </div>
 
-                <hr className="border-border" />
 
                 <FundingMeter funding={funding} />
 
@@ -521,8 +522,6 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <StatusSteps status={proposal.status} />
-                <hr className="border-border" />
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">When</p>
                   {confirmedSlot ? (

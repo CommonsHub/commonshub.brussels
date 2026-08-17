@@ -31,12 +31,13 @@ export function WhatsMissing({
   if (!proposal.confirmedSlotId && proposal.slots.length > 1) {
     missing.push("one date, picked out of the options");
   }
-  const going = proposal.rsvps
-    .filter((r) => r.state === "going")
-    .reduce((sum, r) => sum + r.seats, 0);
-  if (proposal.minAttendees !== null && going < proposal.minAttendees) {
-    const gap = proposal.minAttendees - going;
-    missing.push(`${gap} more ${gap === 1 ? "person" : "people"} saying they are coming`);
+  const supporters = new Set(
+    proposal.rsvps.filter((r) => r.state === "going").map((r) => r.contributorId),
+  ).size;
+  const neededPeople = Math.max(2, proposal.minAttendees ?? 2);
+  if (supporters < neededPeople) {
+    const gap = neededPeople - supporters;
+    missing.push(`${gap} more ${gap === 1 ? "person" : "people"} from the community`);
   }
   if (openTasks.length > 0) {
     missing.push(

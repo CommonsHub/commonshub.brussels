@@ -25,7 +25,7 @@ const schema = z.object({
   slots: z.array(slotSchema).min(1).max(6).optional(),
   roomSlug: z.string().nullable().optional(),
   expectedPeople: z.number().int().min(1).max(500).optional(),
-  minAttendees: z.number().int().min(1).max(500).nullable().optional(),
+  minAttendees: z.number().int().min(2).max(500).optional(),
   maxAttendees: z.number().int().min(1).max(500).nullable().optional(),
   audience: z.enum(["public", "members", "invite"]).optional(),
   tickets: z

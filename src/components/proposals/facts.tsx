@@ -60,7 +60,7 @@ export function ProposalFacts({
   const [roomSlug, setRoomSlug] = useState<string | null>(initialRoom);
   const [people, setPeople] = useState(initialPeople);
   const [range, setRange] = useState<[number, number]>([
-    minAttendees ?? 5,
+    Math.max(2, minAttendees ?? 5),
     maxAttendees ?? initialPeople,
   ]);
   const [tickets, setTickets] = useState<Tickets>(initialTickets);
@@ -235,7 +235,7 @@ export function ProposalFacts({
             </span>
           </div>
           <Slider
-            min={0}
+            min={2}
             max={100}
             step={1}
             value={range}
@@ -250,7 +250,7 @@ export function ProposalFacts({
               setPeople(range[1]);
               save({
                 expectedPeople: range[1],
-                minAttendees: range[0] > 0 ? range[0] : null,
+                minAttendees: Math.max(2, range[0]),
                 maxAttendees: range[1],
               });
             }}

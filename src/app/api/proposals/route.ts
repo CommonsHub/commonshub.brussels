@@ -30,7 +30,8 @@ const schema = z.object({
   slots: z.array(slotSchema).min(1).max(6),
   roomSlug: z.string().nullable(),
   expectedPeople: z.number().int().min(1).max(500),
-  minAttendees: z.number().int().min(1).max(500).nullable().default(null),
+  // Two is the floor for any proposed event: below that it is not an event.
+  minAttendees: z.number().int().min(2).max(500).default(2),
   maxAttendees: z.number().int().min(1).max(500).nullable().default(null),
   audience: z.enum(["public", "members", "invite"]),
   tickets: z.object({

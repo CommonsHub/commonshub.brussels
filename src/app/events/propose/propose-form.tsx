@@ -61,7 +61,7 @@ export function ProposeForm({
   );
   const [roomSlug, setRoomSlug] = useState<string | null>(initial?.roomSlug ?? null);
   const [attendeeRange, setAttendeeRange] = useState<[number, number]>([
-    initial?.minAttendees ?? 5,
+    Math.max(2, initial?.minAttendees ?? 5),
     initial?.maxAttendees ?? initial?.expectedPeople ?? 30,
   ]);
   const expectedPeople = attendeeRange[1];
@@ -190,7 +190,7 @@ export function ProposeForm({
         roomSlug,
         // The top of the range is what rooms are sized against.
         expectedPeople: attendeeRange[1],
-        minAttendees: attendeeRange[0] > 0 ? attendeeRange[0] : null,
+        minAttendees: Math.max(2, attendeeRange[0]),
         maxAttendees: attendeeRange[1],
         audience,
         tickets: {
@@ -468,7 +468,7 @@ export function ProposeForm({
               </span>
             </div>
             <Slider
-              min={0}
+              min={2}
               max={100}
               step={1}
               value={attendeeRange}
