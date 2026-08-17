@@ -31,10 +31,10 @@ export function Header() {
       .then((account) => {
         if (cancelled) return;
         setHubAccount(account);
-        if (account?.discordId) {
-          fetch(`/api/member/${account.discordId}/tokens`)
+        if (account) {
+          fetch("/api/identity/wallet", { cache: "no-store" })
             .then((r) => (r.ok ? r.json() : null))
-            .then((d) => !cancelled && d && setHubBalance(Number(d.balance ?? 0)))
+            .then((d) => !cancelled && d?.wallet && setHubBalance(Number(d.wallet.balance ?? 0)))
             .catch(() => undefined);
         }
       })
@@ -254,7 +254,7 @@ export function Header() {
                     </Avatar>
                     <div className="flex-1 min-w-0 space-y-1">
                       <p className="font-medium text-sm truncate">{hubAccount.displayName}</p>
-                      {hubAccount.hasDiscord && hubBalance !== null ? (
+                      {hubBalance !== null ? (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Coins className="w-3.5 h-3.5" />
                           <span>{hubBalance} tokens</span>

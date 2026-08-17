@@ -7,6 +7,7 @@ import MemberNotFound from "./not-found";
 import { resolveMessagesImages } from "@/lib/discord-image-resolver";
 import { MemberBalance } from "@/components/member-balance";
 import { MemberProfileContent } from "@/components/member-profile-content";
+import { WalletCard } from "@/components/wallet-card";
 import fs from "fs";
 import path from "path";
 
@@ -194,6 +195,11 @@ export default async function MemberProfilePage({ params }: MemberPageProps) {
             )}
 
             <MemberBalance userId={member.id} />
+          </div>
+
+          {/* Renders only for the signed-in person looking at their own page. */}
+          <div className="mt-6">
+            <WalletCard profileDiscordId={member.id} />
           </div>
 
           <MemberProfileContent

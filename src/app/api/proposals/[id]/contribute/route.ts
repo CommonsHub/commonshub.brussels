@@ -4,8 +4,8 @@ import { addContribution, getProposal, setRsvp } from "@/modules/proposals/store
 import { currentCaller } from "@/modules/identity/server";
 import { createEuroCheckout, stripeConfigured } from "@/modules/payments/euro";
 import { collectingAddress, tokensConfigured } from "@/modules/payments/tokens";
-import { sendFromDiscordUser, cardPaymentsConfigured } from "@/modules/payments/card";
-import { maxTokenContribution } from "@/modules/payments/chain";
+import { sendFromUserWallet } from "@/modules/payments/user-wallet";
+import { EXPLORER_URL, maxTokenContribution } from "@/modules/payments/chain";
 import { splitEuroContribution, splitTokenContribution } from "@/modules/proposals/funding";
 
 const schema = z.object({
@@ -49,16 +49,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
-    if (!caller.account.discordId) {
-      // Their tokens live in the account derived from their Discord id — we
-      // cannot move what we cannot locate.
-      return NextResponse.json(
-        { error: "Connect your Discord account first — that is where your tokens live.", needsDiscord: true },
-        { status: 409 },
-      );
-    }
-
-    if (!cardPaymentsConfigured() || !tokensConfigured()) {
+    if (!tokensConfigured()) {
       return NextResponse.json(
         { error: "Token payments are not switched on for this deployment yet." },
         { status: 503 },
@@ -73,14 +64,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
-    // Same mechanism as the bot's /send, without the round-trip through Discord.
-    const transfer = await sendFromDiscordUser({
-      discordId: caller.account.discordId,
-      to,
+    // Your website wallet pays the proposal's — same Safe mechanism both sides.
+    const transfer = await sendFromUserWallet({
+      accountId: caller.account.id,
+      to: to as `0x${string}`,
       amount,
-      description: `${kind === "ticket" ? "Ticket" : "Contribution"} — ${proposal.title} (#${proposal.number})`,
     });
-    if (!transfer.ok) return NextResponse.json({ error: transfer.error }, { status: 502 });
+    if (!transfer.ok) return NextResponse.json({ error: transfer.error }, { status: 402 });
 
     const split = splitTokenContribution(amount);
     const contribution = addContribution(proposal.id, {
@@ -93,6 +83,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       contributorName: caller.account.displayName,
       seats: kind === "ticket" ? seats : 0,
       reference: transfer.txHash,
+      // The refund path sends it back where it came from: their website wallet.
       fromAddress: transfer.from,
     });
 
@@ -106,7 +97,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
     }
 
-    return NextResponse.json({ contribution, explorerUrl: transfer.explorerUrl });
+    return NextResponse.json({
+      contribution,
+      explorerUrl: `${EXPLORER_URL}/tx/${transfer.txHash}`,
+    });
   }
 
   if (!stripeConfigured()) {

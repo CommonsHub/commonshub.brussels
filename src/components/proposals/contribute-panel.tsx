@@ -24,6 +24,7 @@ export function ContributePanel({
   isMember,
   discordLinked,
   tokenBalance,
+  walletAddress,
 }: {
   proposalId: string;
   ticketEur: number | null;
@@ -33,6 +34,7 @@ export function ContributePanel({
   isMember: boolean;
   discordLinked: boolean;
   tokenBalance: number | null;
+  walletAddress: string | null;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("closed");
@@ -169,25 +171,9 @@ export function ContributePanel({
 
   // ── the amount, in tokens ──
   if (step === "tokens") {
-    if (!discordLinked) {
-      return (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Your tokens live in the account behind your Discord — connect it and you can pay from
-            here directly.
-          </p>
-          <Button asChild className="w-full">
-            <a href="/signin">Connect Discord</a>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setStep("currency")}>
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back
-          </Button>
-        </div>
-      );
-    }
-
     const overdrawn =
       tokenBalance !== null && typeof tokenAmount === "number" && tokenAmount > tokenBalance;
+    const empty = tokenBalance !== null && tokenBalance <= 0;
 
     return (
       <div className="space-y-3">
@@ -220,13 +206,23 @@ export function ContributePanel({
             Contribute {tokenAmount || "…"} tokens
           </Button>
         </div>
-        {overdrawn && (
-          <p className="text-xs text-amber-600 dark:text-amber-500">
-            That is more than you hold. Earn some at the hub, or pay in euros.
-          </p>
+        {(overdrawn || empty) && walletAddress && (
+          <div className="rounded-lg border border-dashed p-3 space-y-1.5">
+            <p className="text-xs font-medium">
+              {empty ? "Your website wallet is empty." : "Not enough in your website wallet."} Top
+              it up with the Discord bot:
+            </p>
+            <code className="block rounded-md bg-muted px-2.5 py-1.5 text-xs break-all">
+              /send {typeof tokenAmount === "number" && tokenAmount > 0 ? tokenAmount : 5} to{" "}
+              {walletAddress}
+            </code>
+            <p className="text-xs text-muted-foreground">
+              Then come back here — a refresh picks it up.
+            </p>
+          </div>
         )}
         <p className="text-xs text-muted-foreground">
-          Sent from your own account, straight from here. No admin fee on tokens.
+          Paid from your website wallet, straight from here. No admin fee on tokens.
         </p>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button variant="ghost" size="sm" onClick={() => setStep("currency")} disabled={busy !== null}>

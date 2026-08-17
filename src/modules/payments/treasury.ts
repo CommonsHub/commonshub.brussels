@@ -49,7 +49,7 @@ export async function proposalTreasury(proposalId: string): Promise<ProposalTrea
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
 
   try {
-    const address = await withTimeout(predictSafeAddress(proposalId));
+    const address = await withTimeout(predictSafeAddress("proposal", proposalId));
     const [deployed, tokenBalance] = await Promise.all([
       withTimeout(isDeployed(address)),
       withTimeout(balanceOf(address)),

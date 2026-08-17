@@ -84,10 +84,12 @@ describe("the Safe a proposal collects into", () => {
     }
   });
 
-  it("salts the address with the proposal, deterministically", () => {
-    const salt = saltNonce("abc123");
-    expect(salt).toBe(saltNonce("abc123"));
-    expect(salt).not.toBe(saltNonce("abc124"));
+  it("salts the address with the subject, deterministically", () => {
+    const salt = saltNonce("proposal", "abc123");
+    expect(salt).toBe(saltNonce("proposal", "abc123"));
+    expect(salt).not.toBe(saltNonce("proposal", "abc124"));
+    // A user and a proposal with the same id get different Safes.
+    expect(salt).not.toBe(saltNonce("user", "abc123"));
     expect(salt > BigInt(0)).toBe(true);
   });
 

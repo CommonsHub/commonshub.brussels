@@ -84,9 +84,14 @@ export const SAFE_THRESHOLD = 1;
 
 // ── the address, before anything exists ────────────────────────────────────
 
-/** Same proposal, same salt, same address — for good. */
-export function saltNonce(proposalId: string): bigint {
-  return BigInt(keccak256(toBytes(`commonshub:proposal:${proposalId}`)));
+/**
+ * Same subject, same salt, same address — for good. The namespace keeps a
+ * proposal and a user with the same id apart.
+ */
+export type SafeKind = "proposal" | "user";
+
+export function saltNonce(kind: SafeKind, id: string): bigint {
+  return BigInt(keccak256(toBytes(`commonshub:${kind}:${id}`)));
 }
 
 export function setupCalldata(): Hex {
@@ -124,10 +129,16 @@ function proxyCreationCode(): Promise<Hex> {
  * money to this address, so a mistake here is unrecoverable — the two have to
  * agree before we hand it out.
  */
-export async function predictSafeAddress(proposalId: string): Promise<Address> {
+export async function predictSafeAddress(
+  kind: SafeKind,
+  id: string,
+): Promise<Address> {
   const initializer = setupCalldata();
   const salt = keccak256(
-    concatHex([keccak256(initializer), padHex(`0x${saltNonce(proposalId).toString(16)}`, { size: 32 })]),
+    concatHex([
+      keccak256(initializer),
+      padHex(`0x${saltNonce(kind, id).toString(16)}`, { size: 32 }),
+    ]),
   );
   const initCodeHash = keccak256(
     concatHex([await proxyCreationCode(), padHex(SAFE_SINGLETON, { size: 32 })]),
@@ -141,7 +152,7 @@ export async function predictSafeAddress(proposalId: string): Promise<Address> {
     salt,
   });
 
-  const simulated = await simulateDeployment(proposalId).catch(() => null);
+  const simulated = await simulateDeployment(kind, id).catch(() => null);
   if (simulated && simulated.toLowerCase() !== computed.toLowerCase()) {
     throw new Error(
       `Refusing to use a Safe address we cannot agree on (computed ${computed}, chain says ${simulated}).`,
@@ -152,12 +163,12 @@ export async function predictSafeAddress(proposalId: string): Promise<Address> {
 }
 
 /** What the factory would create, according to the chain. Costs nothing. */
-async function simulateDeployment(proposalId: string): Promise<Address> {
+async function simulateDeployment(kind: SafeKind, id: string): Promise<Address> {
   const { result } = await publicClient.simulateContract({
     address: SAFE_PROXY_FACTORY,
     abi: factoryAbi,
     functionName: "createProxyWithNonce",
-    args: [SAFE_SINGLETON, setupCalldata(), saltNonce(proposalId)],
+    args: [SAFE_SINGLETON, setupCalldata(), saltNonce(kind, id)],
     account: signerAccount().address,
   });
   return result as Address;
@@ -179,15 +190,15 @@ function walletClient() {
 }
 
 /** Deploy the Safe if it is not there yet. Only worth doing when funds move. */
-export async function ensureDeployed(proposalId: string): Promise<Address> {
-  const address = await predictSafeAddress(proposalId);
+export async function ensureDeployed(kind: SafeKind, id: string): Promise<Address> {
+  const address = await predictSafeAddress(kind, id);
   if (await isDeployed(address)) return address;
 
   const hash = await walletClient().writeContract({
     address: SAFE_PROXY_FACTORY,
     abi: factoryAbi,
     functionName: "createProxyWithNonce",
-    args: [SAFE_SINGLETON, setupCalldata(), saltNonce(proposalId)],
+    args: [SAFE_SINGLETON, setupCalldata(), saltNonce(kind, id)],
   });
   await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
 
@@ -208,12 +219,13 @@ function preValidatedSignature(owner: Address): Hex {
 
 /** Send a call out of a proposal's Safe. Gas comes from the signer EOA. */
 export async function execFromSafe(input: {
-  proposalId: string;
+  kind: SafeKind;
+  id: string;
   to: Address;
   data: Hex;
   value?: bigint;
 }): Promise<Hex> {
-  const safe = await ensureDeployed(input.proposalId);
+  const safe = await ensureDeployed(input.kind, input.id);
   const owner = signerAccount().address;
 
   const hash = await walletClient().writeContract({

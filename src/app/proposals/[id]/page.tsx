@@ -10,8 +10,8 @@ import { formatEur, formatTokens, getRoom } from "@/modules/proposals/funding";
 import { fetchTaskList } from "@/modules/tasks/tasklist";
 import { currentCaller } from "@/modules/identity/server";
 import { isMember, isSteward } from "@/modules/identity/service";
-import { balanceForDiscordUser } from "@/modules/payments/tokens";
 import { proposalTreasury } from "@/modules/payments/treasury";
+import { userWallet } from "@/modules/payments/user-wallet";
 import { FundingMeter } from "@/components/proposals/funding-meter";
 import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/status";
 import { Contributors } from "@/components/proposals/contributors";
@@ -71,9 +71,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   const taskList = proposal.taskListId ? await fetchTaskList(proposal.taskListId).catch(() => null) : null;
 
   const treasury = await proposalTreasury(proposal.id).catch(() => null);
-  const balance =
-    account?.discordId && (await balanceForDiscordUser(account.discordId).catch(() => null));
-  const tokenBalance = balance && balance.available ? balance.balance : null;
+  const wallet = account ? await userWallet(account.id).catch(() => null) : null;
+  const tokenBalance = wallet?.balance ?? null;
 
   const photoCount = proposal.comments.reduce(
     (sum, c) => sum + (c.attachments?.length ?? 0),
@@ -367,6 +366,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                   isMember={isMember(account)}
                   discordLinked={!!account?.discordId}
                   tokenBalance={tokenBalance}
+                  walletAddress={wallet?.address ?? null}
                 />
 
                 <hr className="border-border" />

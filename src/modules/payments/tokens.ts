@@ -141,7 +141,7 @@ export interface TokenPaymentRequest {
 export async function collectingAddress(proposalId: string): Promise<Address | null> {
   if (safesConfigured()) {
     try {
-      return await predictSafeAddress(proposalId);
+      return await predictSafeAddress("proposal", proposalId);
     } catch (error) {
       console.error("[tokens] could not work out the Safe address:", error);
     }

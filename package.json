@@ -17,7 +17,6 @@
     "verify-no-private-data": "./scripts/verify-no-private-data.sh"
   },
   "dependencies": {
-    "@citizenwallet/sdk": "2.0.130",
     "@edge-runtime/vm": "latest",
     "@hookform/resolvers": "^3.10.0",
     "@jest/globals": "latest",

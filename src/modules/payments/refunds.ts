@@ -96,7 +96,7 @@ async function refundTokens(
   }
 
   try {
-    const safe = await predictSafeAddress(proposalId);
+    const safe = await predictSafeAddress("proposal", proposalId);
     const amount = parseUnits(contribution.grossAmount.toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 
     const held = await publicClient.readContract({
@@ -111,7 +111,8 @@ async function refundTokens(
 
     // Deploys the Safe if this is the first time money leaves it.
     const hash = await execFromSafe({
-      proposalId,
+      kind: "proposal",
+      id: proposalId,
       to: TOKEN_ADDRESS,
       data: encodeFunctionData({
         abi: erc20,
