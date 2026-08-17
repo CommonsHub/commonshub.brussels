@@ -67,15 +67,31 @@ export type BalanceLookup = BotBalance | { available: false; reason: string };
 
 export async function balanceForDiscordUser(discordId: string): Promise<BalanceLookup> {
   // The account a Discord user holds tokens in is derived from their user id,
-  // the same way the bot derives it, so we can read the balance straight off
-  // the chain without asking the bot anything.
+  // the same way the bot derives it. That account and its CHT live on Celo
+  // mainnet whatever network this deployment runs — the bot only mints there —
+  // so this read is pinned to mainnet rather than the active chain.
   try {
     const { getAccountAddressFromDiscordUserId } = await import("@/lib/citizenwallet");
     const address = await getAccountAddressFromDiscordUserId(discordId);
     if (address) {
+      const { createPublicClient, http, fallback, formatUnits: format } = await import("viem");
+      const settings = (await import("@/settings/settings.json")).default;
+      const token = settings.contributionToken;
+      const mainnet = createPublicClient({
+        transport: fallback([
+          http(token.rpcUrl, { timeout: 8_000 }),
+          http("https://celo.drpc.org", { timeout: 8_000 }),
+        ]),
+      });
+      const raw = await mainnet.readContract({
+        address: token.address as Address,
+        abi: erc20,
+        functionName: "balanceOf",
+        args: [address as Address],
+      });
       return {
         available: true,
-        balance: await balanceOf(address as Address),
+        balance: Number(format(raw, token.decimals)),
         address: address as Address,
       };
     }
