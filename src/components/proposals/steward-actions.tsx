@@ -46,7 +46,7 @@ export function StewardActions({
   }
 
   return (
-    <div className="rounded-lg border border-primary/40 p-4 space-y-3">
+    <div className="rounded-lg border border-primary/40 bg-card p-4 space-y-3">
       <p className="text-xs uppercase tracking-wide text-primary">Stewards</p>
       <p className="text-sm text-muted-foreground">{whatConfirmingDoes}</p>
       <Textarea

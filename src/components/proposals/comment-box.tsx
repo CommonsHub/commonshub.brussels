@@ -12,6 +12,44 @@ interface Attachment {
   name: string;
 }
 
+/** Read a response that might be an HTML error page from the proxy, not JSON. */
+async function readJson(response: Response): Promise<{ [k: string]: unknown }> {
+  try {
+    return await response.json();
+  } catch {
+    if (response.status === 413) return { error: "That photo is too big to upload." };
+    return { error: `The server answered ${response.status} — try again in a moment.` };
+  }
+}
+
+/**
+ * Photos from a phone are many megabytes; nothing on a proposal needs that.
+ * Downscale to a sensible size in the browser before uploading.
+ */
+async function shrinkImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const MAX = 1600;
+    const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 900_000) return file;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.82),
+    );
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    // A format the browser cannot draw — send it as it is and let the server say.
+    return file;
+  }
+}
+
 export function CommentBox({
   proposalId,
   authorName,
@@ -32,16 +70,17 @@ export function CommentBox({
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) {
+      for (const original of Array.from(files)) {
+        const file = await shrinkImage(original);
         const form = new FormData();
         form.append("file", file);
         const response = await fetch(`/api/proposals/${proposalId}/photos`, {
           method: "POST",
           body: form,
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.error || "That photo did not upload.");
-        setAttachments((current) => [...current, data.attachment]);
+        const data = await readJson(response);
+        if (!response.ok) throw new Error(String(data?.error || "That photo did not upload."));
+        setAttachments((current) => [...current, data.attachment as Attachment]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "That photo did not upload.");
@@ -53,7 +92,7 @@ export function CommentBox({
 
   if (!authorName) {
     return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
         <a href="/signin" className="text-primary hover:underline">
           Sign in
         </a>{" "}
@@ -72,8 +111,8 @@ export function CommentBox({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: body.trim(), attachments }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "That did not send.");
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(String(data?.error || "That did not send."));
       setBody("");
       setAttachments([]);
       router.refresh();
@@ -85,7 +124,7 @@ export function CommentBox({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <div className="space-y-3 rounded-lg border bg-card p-4">
       <p className="text-xs text-muted-foreground">Commenting as {authorName}</p>
       <Textarea
         rows={3}

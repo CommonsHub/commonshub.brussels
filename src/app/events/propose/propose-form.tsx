@@ -121,7 +121,7 @@ export function ProposeForm({
     setError(null);
 
     if (!title.trim()) return setError("Give it a name people will recognise.");
-    if (slots.some((s) => !s.date)) return setError("Every date option needs a date.");
+    if (slots.some((s) => !s.date)) return setError("Every date needs a day picked.");
     if (paid && !eurPrice && !tokenPrice) return setError("Set a price, or make it free.");
     if (paid && eurPrice && !tokenPrice) {
       return setError("A price in euros needs a price in tokens too, so members can pay in tokens.");
@@ -222,13 +222,14 @@ export function ProposeForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Give every option that works for you — the more the easier it is to find a free room.
+            You can add multiple dates — the more that work for you, the easier it is to find a
+            free room.
           </p>
           {slots.map((slot, index) => (
             <div key={index} className="rounded-lg border p-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Option {index + 1}
+                  Date {index + 1}
                 </span>
                 {slots.length > 1 && (
                   <Button
@@ -279,7 +280,7 @@ export function ProposeForm({
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => setSlots((c) => [...c, emptySlot()])}>
-            <Plus className="w-4 h-4 mr-1" /> Add another option
+            <Plus className="w-4 h-4 mr-1" /> Add another date
           </Button>
         </CardContent>
       </Card>
