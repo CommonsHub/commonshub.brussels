@@ -7,14 +7,15 @@
  */
 
 export const SUGGESTED_NEEDS = [
-  { label: "TV", mandatory: false },
-  { label: "Projector", mandatory: false },
-  { label: "Coffee", mandatory: false },
-  { label: "Tea", mandatory: false },
-  { label: "Water", mandatory: false },
-  { label: "Snacks", mandatory: false },
-  { label: "Sandwiches", mandatory: false },
-  { label: "Cleaning", mandatory: true },
+  { label: "TV", emoji: "📺", mandatory: false },
+  { label: "Projector", emoji: "📽️", mandatory: false },
+  { label: "Microphones", emoji: "🎤", mandatory: false },
+  { label: "Coffee", emoji: "☕", mandatory: false },
+  { label: "Tea", emoji: "🍵", mandatory: false },
+  { label: "Water", emoji: "💧", mandatory: false },
+  { label: "Snacks", emoji: "🍿", mandatory: false },
+  { label: "Sandwiches", emoji: "🥪", mandatory: false },
+  { label: "Cleaning", emoji: "🧹", mandatory: true },
 ] as const;
 
 export const MANDATORY_NEEDS = SUGGESTED_NEEDS.filter((n) => n.mandatory).map((n) => n.label);

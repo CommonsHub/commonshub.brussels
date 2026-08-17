@@ -10,13 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  fundingTarget,
-  formatEur,
-  formatTokens,
-  suggestTokenPrice,
-  splitEuroContribution,
-} from "@/modules/proposals/funding";
+import { fundingTarget, suggestTokenPrice } from "@/modules/proposals/funding";
 import { SUGGESTED_NEEDS } from "@/modules/tasks/needs";
 import { RoomPicker } from "@/components/proposals/room-picker";
 import type { Me } from "@/modules/identity/client";
@@ -242,43 +236,51 @@ export function ProposeForm({
     <div className="space-y-6">
       <Card>
         <CardHeader>
+          <CardTitle>Already announced somewhere?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="link" className="sr-only">
+            Event link
+          </Label>
+          <Input
+            id="link"
+            type="url"
+            inputMode="url"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            onBlur={fetchFromLink}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                fetchFromLink();
+              }
+            }}
+            placeholder="A Luma, Eventbrite or Meetup link — we fill in what it tells us"
+          />
+          {fetchState.kind === "loading" && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Reading that page…
+            </p>
+          )}
+          {fetchState.kind === "ok" && (
+            <p className="text-xs text-primary">
+              ✓ Picked up the {fetchState.got.join(", ")} from {fetchState.source} — check and
+              adjust below.
+            </p>
+          )}
+          {fetchState.kind === "none" && (
+            <p className="text-xs text-muted-foreground">
+              Could not read details from that page — no problem, fill them in below.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>What do you want to make happen?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="link">Already announced somewhere? Start with the link</Label>
-            <Input
-              id="link"
-              type="url"
-              inputMode="url"
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              onBlur={fetchFromLink}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  fetchFromLink();
-                }
-              }}
-              placeholder="A Luma, Eventbrite or Meetup page — we fill in what it tells us"
-            />
-            {fetchState.kind === "loading" && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Loader2 className="w-3 h-3 animate-spin" /> Reading that page…
-              </p>
-            )}
-            {fetchState.kind === "ok" && (
-              <p className="text-xs text-primary">
-                ✓ Picked up the {fetchState.got.join(", ")} from {fetchState.source} — check and
-                adjust below.
-              </p>
-            )}
-            {fetchState.kind === "none" && (
-              <p className="text-xs text-muted-foreground">
-                Could not read details from that page — no problem, fill them in below.
-              </p>
-            )}
-          </div>
           <div className="space-y-2">
             <Label htmlFor="title">Event name</Label>
             <Input
@@ -306,17 +308,13 @@ export function ProposeForm({
           <CardTitle>When</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            You can add multiple dates — the more that work for you, the easier it is to find a
-            free room.
-          </p>
           {slots.map((slot, index) => (
-            <div key={index} className="rounded-lg border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Date {index + 1}
-                </span>
-                {slots.length > 1 && (
+            <div key={index} className="space-y-3">
+              {slots.length > 1 && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Date {index + 1}
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"
@@ -326,9 +324,8 @@ export function ProposeForm({
                   >
                     <X className="w-3.5 h-3.5 mr-1" /> Remove
                   </Button>
-                )}
-              </div>
-
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor={`date-${index}`}>Date</Label>
                 <Input
@@ -338,7 +335,6 @@ export function ProposeForm({
                   onChange={(e) => updateSlot(index, { date: e.target.value })}
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 min-w-0">
                   <Label htmlFor={`start-${index}`}>Start</Label>
@@ -364,72 +360,14 @@ export function ProposeForm({
               </div>
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" onClick={() => setSlots((c) => [...c, emptySlot()])}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSlots((c) => [...c, emptySlot()])}
+          >
             <Plus className="w-4 h-4 mr-1" /> Add another date
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Where, and how many</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Headcount first: it is what decides which rooms can work at all. */}
-          <div className="space-y-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <Label>How many people?</Label>
-              <span className="text-sm tabular-nums">
-                {attendeeRange[0]} – {attendeeRange[1]}
-              </span>
-            </div>
-            <Slider
-              min={0}
-              max={100}
-              step={1}
-              value={attendeeRange}
-              onValueChange={(value) =>
-                setAttendeeRange([Math.min(...value), Math.max(...value)] as [number, number])
-              }
-              aria-label="Minimum and maximum attendees"
-            />
-            <p className="text-xs text-muted-foreground">
-              It happens from {attendeeRange[0] || "any number of"}{" "}
-              {attendeeRange[0] === 1 ? "person" : "people"}, and caps at {attendeeRange[1]}.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Which room?</Label>
-            <RoomPicker
-              rooms={rooms}
-              selected={roomSlug}
-              onSelect={setRoomSlug}
-              expectedPeople={expectedPeople}
-              slots={slots}
-            />
-          </div>
-
-          {!fitsRoom && (
-            <p className="text-sm text-amber-600 dark:text-amber-500">
-              That room seats fewer people than you expect. It can still work — a steward will say.
-            </p>
-          )}
-
-          <div className="rounded-lg border p-4 space-y-1 bg-muted/40">
-            <p className="text-sm font-medium">
-              Minimum contribution to the hub: {formatEur(target.eur)} or {formatTokens(target.tokens)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {target.roomName
-                ? `${hours}h in the ${target.roomName}${target.estimated ? " — our guess from your headcount, until a room is picked" : ""}`
-                : "Pick a room or a headcount to see what the room costs."}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Tickets and donations both count towards it. Once it is covered, a steward can put the
-              event on the calendar. If it never gets there, everyone who contributed is refunded.
-            </p>
-          </div>
         </CardContent>
       </Card>
 
@@ -496,14 +434,6 @@ export function ProposeForm({
               <p className="text-xs text-muted-foreground">
                 Any price in euros needs a price in tokens, so members can pay the way they already
                 hold value here.
-                {typeof eurPrice === "number" && eurPrice > 0 && (
-                  <>
-                    {" "}
-                    On a {formatEur(eurPrice)} ticket the hub keeps{" "}
-                    {formatEur(splitEuroContribution(eurPrice).adminFee)} as its 10% admin fee, and{" "}
-                    {formatEur(splitEuroContribution(eurPrice).net)} goes towards the room.
-                  </>
-                )}
               </p>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -525,73 +455,119 @@ export function ProposeForm({
         </CardContent>
       </Card>
 
-      {!editing && (
       <Card>
         <CardHeader>
-          <CardTitle>What it needs</CardTitle>
+          <CardTitle>Where, and how many</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            This becomes a shared list anyone can add to and pick items off.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTED_NEEDS.map((need) => {
-              const active = need.mandatory || needs.includes(need.label);
-              return (
-                <Button
-                  key={need.label}
-                  type="button"
-                  size="sm"
-                  variant={active ? "default" : "outline"}
-                  onClick={() => toggleNeed(need.label, need.mandatory)}
-                  className={need.mandatory ? "cursor-default" : undefined}
-                >
-                  {need.label}
-                  {need.mandatory && <span className="ml-1 text-xs opacity-80">· always</span>}
-                </Button>
-              );
-            })}
-          </div>
-
-          {needs.filter((n) => !SUGGESTED_NEEDS.some((s) => s.label === n)).length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {needs
-                .filter((n) => !SUGGESTED_NEEDS.some((s) => s.label === n))
-                .map((need) => (
-                  <Button
-                    key={need}
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setNeeds((c) => c.filter((n) => n !== need))}
-                  >
-                    {need} <X className="w-3 h-3 ml-1" />
-                  </Button>
-                ))}
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label>How many people?</Label>
+              <span className="text-sm tabular-nums">
+                {attendeeRange[0]} – {attendeeRange[1]}
+              </span>
             </div>
-          )}
-
-          <div className="flex gap-2">
-            <Input
-              value={customNeed}
-              onChange={(e) => setCustomNeed(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCustomNeed();
-                }
-              }}
-              placeholder="Something else — a sound system, a translator, a cake…"
+            <Slider
+              min={0}
+              max={100}
+              step={1}
+              value={attendeeRange}
+              onValueChange={(value) =>
+                setAttendeeRange([Math.min(...value), Math.max(...value)] as [number, number])
+              }
+              aria-label="Minimum and maximum attendees"
             />
-            <Button type="button" variant="outline" onClick={addCustomNeed}>
-              Add
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              It happens from {attendeeRange[0] || "any number of"}{" "}
+              {attendeeRange[0] === 1 ? "person" : "people"}, and caps at {attendeeRange[1]}.
+            </p>
           </div>
+
+          <div className="space-y-2">
+            <Label>Which room?</Label>
+            <RoomPicker
+              rooms={rooms}
+              selected={roomSlug}
+              onSelect={setRoomSlug}
+              expectedPeople={expectedPeople}
+              slots={slots}
+            />
+          </div>
+
+          {!fitsRoom && (
+            <p className="text-sm text-amber-600 dark:text-amber-500">
+              That room seats fewer people than you expect. It can still work — a steward will say.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {!editing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>What it needs</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This becomes a shared list anyone can add to and pick items off.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {SUGGESTED_NEEDS.map((need) => {
+                const active = need.mandatory || needs.includes(need.label);
+                return (
+                  <Button
+                    key={need.label}
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => toggleNeed(need.label, need.mandatory)}
+                    className={need.mandatory ? "cursor-default" : undefined}
+                  >
+                    <span className="mr-1">{need.emoji}</span>
+                    {need.label}
+                    {need.mandatory && <span className="ml-1 text-xs opacity-80">· always</span>}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {needs.filter((n) => !SUGGESTED_NEEDS.some((s) => s.label === n)).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {needs
+                  .filter((n) => !SUGGESTED_NEEDS.some((s) => s.label === n))
+                  .map((need) => (
+                    <Button
+                      key={need}
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setNeeds((c) => c.filter((n) => n !== need))}
+                    >
+                      {need} <X className="w-3 h-3 ml-1" />
+                    </Button>
+                  ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Input
+                value={customNeed}
+                onChange={(e) => setCustomNeed(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomNeed();
+                  }
+                }}
+                placeholder="Something else — a sound system, a translator, a cake…"
+              />
+              <Button type="button" variant="outline" onClick={addCustomNeed}>
+                Add
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
-
-
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
