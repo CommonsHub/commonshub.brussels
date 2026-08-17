@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Logo } from "./logo";
 import { Button } from "@/components/ui/button";
 import { AuthButton } from "@/components/auth-button";
+import { BalanceChip } from "@/components/balance-chip";
 import { NostrOutboxBadge } from "@/components/nostr-outbox-badge";
 import { Menu, X, LogOut, Coins } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -113,6 +114,7 @@ export function Header() {
               <Link href="/rooms">Book Space</Link>
             </Button>
             <NostrOutboxBadge />
+            <BalanceChip />
             <AuthButton />
           </div>
 
