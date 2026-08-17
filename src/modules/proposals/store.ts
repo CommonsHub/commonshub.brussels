@@ -20,6 +20,7 @@ import type {
   ProposalComment,
   ProposalDraft,
   ProposalStatus,
+  Reaction,
   Refund,
   Revision,
   Rsvp,
@@ -48,6 +49,7 @@ export type ProposalEvent =
   | { type: "rsvped"; at: string; rsvp: Rsvp }
   | { type: "tasklist_linked"; at: string; taskListId: string }
   | { type: "refunded"; at: string; refunds: Refund[]; note?: string }
+  | { type: "reacted"; at: string; reaction: Reaction }
   | { type: "numbered"; at: string; number: number; slug: string; eventSlug?: string }
   | {
       type: "status_changed";
@@ -106,6 +108,7 @@ function project(events: ProposalEvent[]): Proposal | null {
     number: first.proposal.number ?? 0,
     eventSlug: first.proposal.eventSlug ?? first.proposal.slug,
     link: first.proposal.link ?? null,
+    reactions: first.proposal.reactions ?? [],
   };
 
   for (const event of events.slice(1)) {
@@ -151,6 +154,24 @@ function project(events: ProposalEvent[]): Proposal | null {
       case "refunded":
         proposal = { ...proposal, refunds: [...proposal.refunds, ...event.refunds] };
         break;
+      case "reacted": {
+        // Same person, same target, same emoji again = taking it back.
+        const { reaction } = event;
+        const existing = proposal.reactions.findIndex(
+          (r) =>
+            r.actorId === reaction.actorId &&
+            r.targetId === reaction.targetId &&
+            r.emoji === reaction.emoji,
+        );
+        proposal = {
+          ...proposal,
+          reactions:
+            existing >= 0
+              ? proposal.reactions.filter((_, i) => i !== existing)
+              : [...proposal.reactions, reaction],
+        };
+        break;
+      }
       case "numbered":
         proposal = {
           ...proposal,
@@ -354,6 +375,7 @@ export function createProposal(
     comments: [],
     contributions: [],
     refunds: [],
+    reactions: [],
     rsvps: [],
     revisions: [],
   };
@@ -463,6 +485,50 @@ export function linkTaskList(id: string, taskListId: string): void {
     at: new Date().toISOString(),
     taskListId,
   });
+}
+
+export function toggleReaction(
+  id: string,
+  targetId: string,
+  emoji: string,
+  actor: { id: string; name: string },
+): Proposal | null {
+  const proposal = getProposal(id);
+  if (!proposal) return null;
+  appendEvent(proposal.id, {
+    type: "reacted",
+    at: new Date().toISOString(),
+    reaction: {
+      targetId,
+      emoji,
+      actorId: actor.id,
+      actorName: actor.name,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return getProposal(proposal.id);
+}
+
+/** Reactions on one target, grouped per emoji, with whether `viewerId` is in. */
+export function reactionsFor(
+  proposal: Proposal,
+  targetId: string,
+  viewerId?: string | null,
+): Array<{ emoji: string; count: number; names: string[]; mine: boolean }> {
+  const groups = new Map<string, { names: string[]; mine: boolean }>();
+  for (const reaction of proposal.reactions) {
+    if (reaction.targetId !== targetId) continue;
+    const group = groups.get(reaction.emoji) ?? { names: [], mine: false };
+    group.names.push(reaction.actorName);
+    if (viewerId && reaction.actorId === viewerId) group.mine = true;
+    groups.set(reaction.emoji, group);
+  }
+  return Array.from(groups.entries()).map(([emoji, g]) => ({
+    emoji,
+    count: g.names.length,
+    names: g.names,
+    mine: g.mine,
+  }));
 }
 
 export function recordRefunds(id: string, refunds: Refund[], note?: string): Proposal | null {

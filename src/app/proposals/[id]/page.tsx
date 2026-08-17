@@ -5,7 +5,7 @@ import { ArrowLeft, ExternalLink, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getProposal, progressFor, timelineFor } from "@/modules/proposals/store";
+import { getProposal, progressFor, reactionsFor, timelineFor } from "@/modules/proposals/store";
 import { formatEur, formatTokens, getRoom } from "@/modules/proposals/funding";
 import { fetchTaskList } from "@/modules/tasks/tasklist";
 import { currentCaller } from "@/modules/identity/server";
@@ -17,6 +17,8 @@ import { StatusSteps, statusLabel, statusTone } from "@/components/proposals/sta
 import { Contributors } from "@/components/proposals/contributors";
 import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
+import { ReactionBar } from "@/components/proposals/reaction-bar";
+import { Pencil } from "lucide-react";
 import { ContributePanel } from "@/components/proposals/contribute-panel";
 import { CommentBox } from "@/components/proposals/comment-box";
 import { StewardActions } from "@/components/proposals/steward-actions";
@@ -47,6 +49,12 @@ function when(slot: { date: string; start: string; duration: number }): string {
   })} · ${slot.start} · ${slot.duration}h`;
 }
 
+function whenShort(slot: { date: string; start: string; duration: number }): string {
+  const date = new Date(`${slot.date}T${slot.start}:00`);
+  if (Number.isNaN(date.getTime())) return `${slot.date} ${slot.start}`;
+  return `${date.toLocaleDateString("en-BE", { weekday: "short", day: "numeric", month: "short" })} · ${slot.start} · ${slot.duration}h`;
+}
+
 function ago(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const days = Math.floor(diff / 86_400_000);
@@ -74,6 +82,8 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   const wallet = account ? await userWallet(account.id).catch(() => null) : null;
   const tokenBalance = wallet?.balance ?? null;
 
+  const mayEdit =
+    !!account && (proposal.proposerId === account.id || isSteward(account));
   const photoCount = proposal.comments.reduce(
     (sum, c) => sum + (c.attachments?.length ?? 0),
     0,
@@ -105,7 +115,42 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
             <p className="text-muted-foreground">
               #{proposal.number} · proposed by {proposal.proposerName} · {ago(proposal.createdAt)} ·
               version {proposal.version}
+              {mayEdit && (
+                <>
+                  {" · "}
+                  <Link
+                    href={`/proposals/${proposal.number}/edit`}
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> edit
+                  </Link>
+                </>
+              )}
             </p>
+
+            {/* The facts at a glance, before anything else. */}
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {proposal.slots.map((slot) => (
+                <span key={slot.id} className="rounded-full border px-2.5 py-1">
+                  {whenShort(slot)}
+                </span>
+              ))}
+              <span className="rounded-full border px-2.5 py-1">
+                {room ? room.name : "Any room"}
+              </span>
+              <span className="rounded-full border px-2.5 py-1">~{proposal.expectedPeople} people</span>
+              <span className="rounded-full border px-2.5 py-1">
+                {proposal.tickets.eur || proposal.tickets.tokens
+                  ? [
+                      proposal.tickets.eur ? formatEur(proposal.tickets.eur) : null,
+                      proposal.tickets.tokens ? formatTokens(proposal.tickets.tokens) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "Free"}
+              </span>
+            </div>
+
             <Link
               href={`/events/${proposal.eventSlug}`}
               className="text-sm text-primary hover:underline"
@@ -126,9 +171,27 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
             <Card>
               <CardContent className="pt-6 space-y-3">
                 {proposal.pitch && <p className="font-medium">{proposal.pitch}</p>}
-                {proposal.description && (
+                {proposal.description ? (
                   <p className="text-muted-foreground whitespace-pre-wrap">{proposal.description}</p>
+                ) : mayEdit ? (
+                  <p className="text-muted-foreground">
+                    <Link
+                      href={`/proposals/${proposal.number}/edit`}
+                      className="text-primary hover:underline"
+                    >
+                      Add a description
+                    </Link>{" "}
+                    — say what happens, who it is for, what to bring.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground italic">No description provided.</p>
                 )}
+                <ReactionBar
+                  proposalId={proposal.id}
+                  targetId="proposal"
+                  initial={reactionsFor(proposal, "proposal", account?.id)}
+                  signedIn={!!account}
+                />
               </CardContent>
             </Card>
 
@@ -163,6 +226,12 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                         ))}
                       </div>
                     )}
+                    <ReactionBar
+                      proposalId={proposal.id}
+                      targetId={item.comment.id}
+                      initial={reactionsFor(proposal, item.comment.id, account?.id)}
+                      signedIn={!!account}
+                    />
                   </div>
                 );
               }
@@ -268,6 +337,69 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
 
           {/* ── the summary ── */}
           <aside className="space-y-6 order-1 lg:order-2 lg:sticky lg:top-6">
+            {/* The main call to action: gather what this needs. */}
+            <Card className="border-primary/40">
+              <CardContent className="pt-6 space-y-5">
+                <div className="space-y-1">
+                  <h2 className="font-semibold">Help make it happen</h2>
+                  <p className="text-sm text-muted-foreground">
+                    This proposal needs to gather enough resources to go ahead.
+                  </p>
+                </div>
+                <FundingMeter funding={funding} />
+
+                <hr className="border-border" />
+
+                <ContributePanel
+                  proposalId={proposal.id}
+                  ticketEur={proposal.tickets.eur}
+                  ticketTokens={proposal.tickets.tokens}
+                  freeForMembers={proposal.tickets.freeForMembers}
+                  signedIn={!!account}
+                  isMember={isMember(account)}
+                  discordLinked={!!account?.discordId}
+                  tokenBalance={tokenBalance}
+                  walletAddress={wallet?.address ?? null}
+                />
+
+                <hr className="border-border" />
+
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-semibold text-sm">Who has chipped in</h3>
+                    {going.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {seats} {seats === 1 ? "person" : "people"} coming
+                      </span>
+                    )}
+                  </div>
+                  <Contributors contributions={proposal.contributions} />
+                </div>
+
+                {treasury && (
+                  <>
+                    <hr className="border-border" />
+                    <p className="text-xs text-muted-foreground">
+                      Token contributions collect in this proposal&apos;s own Safe
+                      {treasury.tokenBalance > 0 && (
+                        <> — holding {treasury.tokenBalance} {treasury.symbol} right now</>
+                      )}
+                      {!treasury.deployed && " (deployed the first time money moves out)"}
+                      {": "}
+                      <a
+                        href={treasury.explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-primary hover:underline break-all"
+                      >
+                        {treasury.address}
+                      </a>
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
             <WhatsMissing proposal={proposal} funding={funding} taskList={taskList} />
 
             <Card>
@@ -350,62 +482,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
               </CardContent>
             </Card>
 
-            {/* Funding, how to add to it, and who already has. */}
-            <Card>
-              <CardContent className="pt-6 space-y-5">
-                <FundingMeter funding={funding} />
 
-                <hr className="border-border" />
-
-                <ContributePanel
-                  proposalId={proposal.id}
-                  ticketEur={proposal.tickets.eur}
-                  ticketTokens={proposal.tickets.tokens}
-                  freeForMembers={proposal.tickets.freeForMembers}
-                  signedIn={!!account}
-                  isMember={isMember(account)}
-                  discordLinked={!!account?.discordId}
-                  tokenBalance={tokenBalance}
-                  walletAddress={wallet?.address ?? null}
-                />
-
-                <hr className="border-border" />
-
-                <div className="space-y-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="font-semibold text-sm">Who has chipped in</h3>
-                    {going.length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {seats} {seats === 1 ? "person" : "people"} coming
-                      </span>
-                    )}
-                  </div>
-                  <Contributors contributions={proposal.contributions} />
-                </div>
-
-                {treasury && (
-                  <>
-                    <hr className="border-border" />
-                    <p className="text-xs text-muted-foreground">
-                      Token contributions collect in this proposal&apos;s own Safe
-                      {treasury.tokenBalance > 0 && (
-                        <> — holding {treasury.tokenBalance} {treasury.symbol} right now</>
-                      )}
-                      {!treasury.deployed && " (deployed the first time money moves out)"}
-                      {": "}
-                      <a
-                        href={treasury.explorerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-primary hover:underline break-all"
-                      >
-                        {treasury.address}
-                      </a>
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
 
             <Card>
               <CardHeader className="pb-3">

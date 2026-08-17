@@ -89,6 +89,19 @@ export interface Rsvp {
   createdAt: string;
 }
 
+/**
+ * An emoji on the proposal itself or on one of its comments. NIP-25 semantics:
+ * reacting again with the same emoji takes it back.
+ */
+export interface Reaction {
+  /** "proposal", or a comment id. */
+  targetId: string;
+  emoji: string;
+  actorId: string;
+  actorName: string;
+  createdAt: string;
+}
+
 /** A picture someone attached to a comment. */
 export interface Attachment {
   url: string;
@@ -152,6 +165,7 @@ export interface Proposal {
   comments: ProposalComment[];
   contributions: Contribution[];
   refunds: Refund[];
+  reactions: Reaction[];
   rsvps: Rsvp[];
   revisions: Revision[];
 

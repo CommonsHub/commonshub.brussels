@@ -30,20 +30,47 @@ interface SlotDraft {
 
 const emptySlot = (): SlotDraft => ({ date: "", start: "18:00", duration: 2 });
 
-export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null }) {
-  const router = useRouter();
+export interface ProposalInitial {
+  id: string;
+  number: number;
+  title: string;
+  description: string;
+  link: string | null;
+  slots: SlotDraft[];
+  roomSlug: string | null;
+  expectedPeople: number;
+  audience: "public" | "members" | "invite";
+  tickets: { eur: number | null; tokens: number | null; freeForMembers: boolean };
+}
 
-  const [title, setTitle] = useState("");
-  const [link, setLink] = useState("");
-  const [description, setDescription] = useState("");
-  const [slots, setSlots] = useState<SlotDraft[]>([emptySlot()]);
-  const [roomSlug, setRoomSlug] = useState<string | null>(null);
-  const [expectedPeople, setExpectedPeople] = useState(20);
-  const [audience, setAudience] = useState<"public" | "members" | "invite">("public");
-  const [paid, setPaid] = useState(false);
-  const [eurPrice, setEurPrice] = useState<number | "">("");
-  const [tokenPrice, setTokenPrice] = useState<number | "">("");
-  const [freeForMembers, setFreeForMembers] = useState(true);
+export function ProposeForm({
+  rooms,
+  me,
+  initial,
+}: {
+  rooms: RoomOption[];
+  me: Me | null;
+  /** Present when editing an existing proposal rather than opening a new one. */
+  initial?: ProposalInitial;
+}) {
+  const router = useRouter();
+  const editing = !!initial;
+
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [link, setLink] = useState(initial?.link ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [slots, setSlots] = useState<SlotDraft[]>(
+    initial?.slots.length ? initial.slots : [emptySlot()],
+  );
+  const [roomSlug, setRoomSlug] = useState<string | null>(initial?.roomSlug ?? null);
+  const [expectedPeople, setExpectedPeople] = useState(initial?.expectedPeople ?? 20);
+  const [audience, setAudience] = useState<"public" | "members" | "invite">(
+    initial?.audience ?? "public",
+  );
+  const [paid, setPaid] = useState(!!(initial?.tickets.eur || initial?.tickets.tokens));
+  const [eurPrice, setEurPrice] = useState<number | "">(initial?.tickets.eur ?? "");
+  const [tokenPrice, setTokenPrice] = useState<number | "">(initial?.tickets.tokens ?? "");
+  const [freeForMembers, setFreeForMembers] = useState(initial?.tickets.freeForMembers ?? true);
   const [needs, setNeeds] = useState<string[]>(["Cleaning"]);
   const [customNeed, setCustomNeed] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -102,29 +129,32 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/proposals", {
-        method: "POST",
+      const body = {
+        title: title.trim(),
+        description: description.trim(),
+        link: link.trim() || null,
+        slots,
+        roomSlug,
+        expectedPeople,
+        audience,
+        tickets: {
+          eur: paid && eurPrice !== "" ? Number(eurPrice) : null,
+          tokens: paid && tokenPrice !== "" ? Number(tokenPrice) : null,
+          freeForMembers,
+        },
+        ...(editing ? {} : { needs }),
+      };
+
+      const response = await fetch(editing ? `/api/proposals/${initial.id}` : "/api/proposals", {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          link: link.trim() || null,
-          slots,
-          roomSlug,
-          expectedPeople,
-          audience,
-          tickets: {
-            eur: paid && eurPrice !== "" ? Number(eurPrice) : null,
-            tokens: paid && tokenPrice !== "" ? Number(tokenPrice) : null,
-            freeForMembers,
-          },
-          needs,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "That did not go through.");
       router.push(`/proposals/${data.proposal.number}`);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "That did not go through.");
       setSubmitting(false);
@@ -397,6 +427,7 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
         </CardContent>
       </Card>
 
+      {!editing && (
       <Card>
         <CardHeader>
           <CardTitle>What it needs</CardTitle>
@@ -460,7 +491,9 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {!editing && (
       <Card className="border-primary/40">
         <CardHeader>
           <CardTitle className="text-base">What happens after you post</CardTitle>
@@ -481,16 +514,19 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
           </p>
         </CardContent>
       </Card>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={submit} disabled={submitting} size="lg">
           {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Post proposal
+          {editing ? "Save changes" : "Post proposal"}
         </Button>
         <p className="text-sm text-muted-foreground">
-          Posting as {me.displayName}. It becomes public straight away.
+          {editing
+            ? "The change lands in the thread as a new version, with a diff."
+            : `Posting as ${me.displayName}. It becomes public straight away.`}
         </p>
       </div>
     </div>

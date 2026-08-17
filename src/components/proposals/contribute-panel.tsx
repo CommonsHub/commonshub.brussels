@@ -94,24 +94,11 @@ export function ContributePanel({
     }
   }
 
-  async function interested() {
-    setError(null);
-    setBusy("rsvp");
-    try {
-      await post(`/api/proposals/${proposalId}/rsvp`, { state: "going", seats: 1 });
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That did not work.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   if (!signedIn) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Sign in to say you are interested or to chip in towards the room.
+          Sign in to chip in towards making this happen.
         </p>
         <Button asChild className="w-full">
           <a href="/signin">Sign in</a>
@@ -258,19 +245,11 @@ export function ContributePanel({
   }
 
   // ── closed: one door in ──
-  const freeForThisPerson = !hasTicket || (freeForMembers && isMember);
-
   return (
     <div className="space-y-2">
       <Button onClick={() => setStep("currency")} className="w-full">
         Contribute
       </Button>
-      {freeForThisPerson && (
-        <Button variant="outline" onClick={interested} disabled={busy !== null} className="w-full">
-          {busy === "rsvp" && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          I&apos;m interested
-        </Button>
-      )}
       {hasTicket && freeForMembers && isMember && (
         <p className="text-xs text-muted-foreground text-center">Members come free.</p>
       )}
