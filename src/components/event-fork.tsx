@@ -27,11 +27,11 @@ export function EventFork() {
               <p className="text-xs uppercase tracking-wide text-primary flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5" /> Public · anyone can join in
               </p>
-              <CardTitle>Organise an event for the community</CardTitle>
+              <CardTitle>Organise an event with the community</CardTitle>
               <CardDescription>
-                A workshop, a talk, a repair café, a potluck. You write a proposal, it becomes a
-                public thread: people comment, help out, chip in towards the room, and say they are
-                coming.
+                Would you love to organise an event at the Commons Hub? Make a proposal to organise
+                it with members of the community — share the idea even if it is not fully baked
+                yet, see who else is interested, and secure your first participants.
               </CardDescription>
             </CardHeader>
             <CardContent className="mt-auto space-y-3">

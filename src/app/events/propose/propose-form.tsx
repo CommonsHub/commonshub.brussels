@@ -79,6 +79,58 @@ export function ProposeForm({
   const [customNeed, setCustomNeed] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchState, setFetchState] = useState<
+    { kind: "idle" } | { kind: "loading" } | { kind: "ok"; source: string; got: string[] } | { kind: "none" }
+  >({ kind: "idle" });
+
+  /** Read the event page behind the link and pre-fill whatever it tells us. */
+  async function fetchFromLink() {
+    const url = link.trim();
+    if (!url || editing) return;
+    setFetchState({ kind: "loading" });
+    try {
+      const response = await fetch(`/api/og-preview?url=${encodeURIComponent(url)}`);
+      const data = await response.json();
+      if (!data?.found) {
+        setFetchState({ kind: "none" });
+        return;
+      }
+      const got: string[] = [];
+      if (data.title && !title.trim()) {
+        setTitle(data.title);
+        got.push("title");
+      }
+      if (data.description && !description.trim()) {
+        setDescription(data.description);
+        got.push("description");
+      }
+      if (data.start) {
+        const startDate = new Date(data.start);
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Europe/Brussels",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).formatToParts(startDate);
+        const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+        const date = `${get("year")}-${get("month")}-${get("day")}`;
+        const start = `${get("hour")}:${get("minute")}`;
+        let duration = 2;
+        if (data.end) {
+          const hours = (new Date(data.end).getTime() - startDate.getTime()) / 3_600_000;
+          if (hours > 0 && hours <= 24) duration = Math.round(hours * 2) / 2;
+        }
+        setSlots([{ date, start, duration }]);
+        got.push("date");
+      }
+      setFetchState(got.length ? { kind: "ok", source: data.source, got } : { kind: "none" });
+    } catch {
+      setFetchState({ kind: "none" });
+    }
+  }
 
   const hours = useMemo(() => Math.max(...slots.map((s) => s.duration || 0), 0), [slots]);
 
@@ -190,6 +242,40 @@ export function ProposeForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            <Label htmlFor="link">Already announced somewhere? Start with the link</Label>
+            <Input
+              id="link"
+              type="url"
+              inputMode="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              onBlur={fetchFromLink}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  fetchFromLink();
+                }
+              }}
+              placeholder="A Luma, Eventbrite or Meetup page — we fill in what it tells us"
+            />
+            {fetchState.kind === "loading" && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin" /> Reading that page…
+              </p>
+            )}
+            {fetchState.kind === "ok" && (
+              <p className="text-xs text-primary">
+                ✓ Picked up the {fetchState.got.join(", ")} from {fetchState.source} — check and
+                adjust below.
+              </p>
+            )}
+            {fetchState.kind === "none" && (
+              <p className="text-xs text-muted-foreground">
+                Could not read details from that page — no problem, fill them in below.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="title">Event name</Label>
             <Input
               id="title"
@@ -206,17 +292,6 @@ export function ProposeForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What happens, who it is for, what people should bring."
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="link">Link (optional)</Label>
-            <Input
-              id="link"
-              type="url"
-              inputMode="url"
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder="A Luma or Eventbrite page, if the event has one"
             />
           </div>
         </CardContent>
@@ -528,28 +603,7 @@ export function ProposeForm({
       </Card>
       )}
 
-      {!editing && (
-      <Card className="border-primary/40">
-        <CardHeader>
-          <CardTitle className="text-base">What happens after you post</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>
-            Other members of the community will be able to chime in and contribute. Once the
-            different resources needed to make this event happen are secured, it will be confirmed
-            in the calendar.
-          </p>
-          <p>
-            Until then the proposal shows what is still missing — the room, the money for it, the
-            things on your list — so people know exactly what would make it happen.
-          </p>
-          <p className="text-foreground">
-            If it never gathers everything it needs, it does not happen and everyone who contributed
-            gets their money back, in the currency they paid.
-          </p>
-        </CardContent>
-      </Card>
-      )}
+
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -561,9 +615,36 @@ export function ProposeForm({
         <p className="text-sm text-muted-foreground">
           {editing
             ? "The change lands in the thread as a new version, with a diff."
-            : `Posting as ${me.displayName}. It becomes public straight away.`}
+            : `Posting as ${me.displayName}.`}
         </p>
       </div>
+
+      {!editing && (
+        <div className="pt-8 border-t space-y-5 text-sm">
+          <h2 className="font-semibold text-base">What happens after you post?</h2>
+          <div className="space-y-1">
+            <p className="font-medium">Who sees it?</p>
+            <p className="text-muted-foreground">
+              Other members of the community will be able to chime in and contribute — comment,
+              take something off the list, chip in towards the room, say they are coming.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">When is it confirmed?</p>
+            <p className="text-muted-foreground">
+              Once the different resources needed to make this event happen are secured, a steward
+              confirms it in the calendar.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">And if it never gets there?</p>
+            <p className="text-muted-foreground">
+              Then it does not happen, and everyone who contributed gets their money back — in the
+              currency they paid.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -36,10 +36,13 @@ export default async function ProposePage() {
               All proposals
             </Button>
           </Link>
-          <h1 className="text-3xl font-bold">Organise an event for the community</h1>
+          <h1 className="text-3xl font-bold">Organise an event with the community</h1>
           <p className="text-muted-foreground mt-2">
-            Everything here is public: people can comment, help out, chip in towards the room, and
-            say they are coming. A steward puts it on the calendar once the room is covered.
+            Would you love to organise an event at the Commons Hub? Make a proposal to organise it
+            with members of the community. Share the idea even if it is not fully baked yet — see
+            who else in the community is interested and secure your first participants. Community
+            members can RSVP with their tokens, and externals can buy a ticket with their old
+            tokens aka euros. You can also make it a free event, of course.
           </p>
         </div>
 
