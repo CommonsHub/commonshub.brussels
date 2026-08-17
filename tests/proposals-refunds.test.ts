@@ -26,6 +26,8 @@ function draft(title: string) {
     slots: [{ date: "2026-09-19", start: "14:00", duration: 4 }],
     roomSlug: "ostrom",
     expectedPeople: 25,
+    minAttendees: null,
+    maxAttendees: null,
     audience: "public" as const,
     tickets: { eur: 10, tokens: 0.5, freeForMembers: true },
     needs: [],

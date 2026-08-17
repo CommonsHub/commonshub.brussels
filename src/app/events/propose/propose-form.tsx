@@ -39,6 +39,8 @@ export interface ProposalInitial {
   slots: SlotDraft[];
   roomSlug: string | null;
   expectedPeople: number;
+  minAttendees: number | null;
+  maxAttendees: number | null;
   audience: "public" | "members" | "invite";
   tickets: { eur: number | null; tokens: number | null; freeForMembers: boolean };
 }
@@ -64,6 +66,8 @@ export function ProposeForm({
   );
   const [roomSlug, setRoomSlug] = useState<string | null>(initial?.roomSlug ?? null);
   const [expectedPeople, setExpectedPeople] = useState(initial?.expectedPeople ?? 20);
+  const [minAttendees, setMinAttendees] = useState<number | "">(initial?.minAttendees ?? "");
+  const [maxAttendees, setMaxAttendees] = useState<number | "">(initial?.maxAttendees ?? "");
   const [audience, setAudience] = useState<"public" | "members" | "invite">(
     initial?.audience ?? "public",
   );
@@ -136,6 +140,8 @@ export function ProposeForm({
         slots,
         roomSlug,
         expectedPeople,
+        minAttendees: minAttendees === "" ? null : Number(minAttendees),
+        maxAttendees: maxAttendees === "" ? null : Number(maxAttendees),
         audience,
         tickets: {
           eur: paid && eurPrice !== "" ? Number(eurPrice) : null,
@@ -291,15 +297,43 @@ export function ProposeForm({
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Headcount first: it is what decides which rooms can work at all. */}
-          <div className="space-y-1.5 max-w-40">
-            <Label htmlFor="people">How many people?</Label>
-            <Input
-              id="people"
-              type="number"
-              min={1}
-              value={expectedPeople}
-              onChange={(e) => setExpectedPeople(Number(e.target.value))}
-            />
+          <div className="flex flex-wrap gap-4">
+            <div className="space-y-1.5 w-32">
+              <Label htmlFor="people">How many people?</Label>
+              <Input
+                id="people"
+                type="number"
+                min={1}
+                value={expectedPeople}
+                onChange={(e) => setExpectedPeople(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-1.5 w-32">
+              <Label htmlFor="min-attendees">Minimum to happen</Label>
+              <Input
+                id="min-attendees"
+                type="number"
+                min={1}
+                placeholder="optional"
+                value={minAttendees}
+                onChange={(e) =>
+                  setMinAttendees(e.target.value === "" ? "" : Number(e.target.value))
+                }
+              />
+            </div>
+            <div className="space-y-1.5 w-32">
+              <Label htmlFor="max-attendees">Maximum</Label>
+              <Input
+                id="max-attendees"
+                type="number"
+                min={1}
+                placeholder="optional"
+                value={maxAttendees}
+                onChange={(e) =>
+                  setMaxAttendees(e.target.value === "" ? "" : Number(e.target.value))
+                }
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

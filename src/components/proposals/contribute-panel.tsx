@@ -145,9 +145,6 @@ export function ContributePanel({
             Pay by card
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          The hub keeps 10% of euro payments as its admin fee; the rest goes towards the room.
-        </p>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button variant="ghost" size="sm" onClick={() => setStep("currency")} disabled={busy !== null}>
           <ArrowLeft className="w-4 h-4 mr-1" /> Back

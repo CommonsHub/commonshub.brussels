@@ -25,6 +25,8 @@ const schema = z.object({
   slots: z.array(slotSchema).min(1).max(6).optional(),
   roomSlug: z.string().nullable().optional(),
   expectedPeople: z.number().int().min(1).max(500).optional(),
+  minAttendees: z.number().int().min(1).max(500).nullable().optional(),
+  maxAttendees: z.number().int().min(1).max(500).nullable().optional(),
   audience: z.enum(["public", "members", "invite"]).optional(),
   tickets: z
     .object({
@@ -82,6 +84,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (input.link !== undefined) patch.link = input.link;
   if (input.roomSlug !== undefined) patch.roomSlug = input.roomSlug;
   if (input.expectedPeople !== undefined) patch.expectedPeople = input.expectedPeople;
+  if (input.minAttendees !== undefined) patch.minAttendees = input.minAttendees;
+  if (input.maxAttendees !== undefined) patch.maxAttendees = input.maxAttendees;
   if (input.audience !== undefined) patch.audience = input.audience;
   if (input.tickets !== undefined) patch.tickets = input.tickets;
   if (input.slots !== undefined) {

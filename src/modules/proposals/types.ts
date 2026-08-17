@@ -151,6 +151,10 @@ export interface Proposal {
   /** Room slug, or null for "any room — you decide". */
   roomSlug: string | null;
   expectedPeople: number;
+  /** It only happens if at least this many say they are coming. */
+  minAttendees: number | null;
+  /** Hard cap on RSVPs; null means the room's own limit is the limit. */
+  maxAttendees: number | null;
   audience: Audience;
   tickets: TicketPricing;
 
@@ -183,6 +187,8 @@ export interface ProposalDraft {
   slots: Array<Omit<Slot, "id">>;
   roomSlug: string | null;
   expectedPeople: number;
+  minAttendees: number | null;
+  maxAttendees: number | null;
   audience: Audience;
   tickets: TicketPricing;
   needs: string[];

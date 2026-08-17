@@ -110,6 +110,8 @@ function project(events: ProposalEvent[]): Proposal | null {
     eventSlug: first.proposal.eventSlug ?? first.proposal.slug,
     link: first.proposal.link ?? null,
     reactions: first.proposal.reactions ?? [],
+    minAttendees: first.proposal.minAttendees ?? null,
+    maxAttendees: first.proposal.maxAttendees ?? null,
   };
 
   for (const event of events.slice(1)) {
@@ -366,6 +368,8 @@ export function createProposal(
     confirmedSlotId: slots.length === 1 ? slots[0].id : null,
     roomSlug: draft.roomSlug,
     expectedPeople: draft.expectedPeople,
+    minAttendees: draft.minAttendees,
+    maxAttendees: draft.maxAttendees,
     audience: draft.audience,
     tickets: draft.tickets,
     taskListId: null,

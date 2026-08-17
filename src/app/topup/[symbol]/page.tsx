@@ -95,7 +95,8 @@ export default async function TopUpPage({ params }: { params: Promise<{ symbol: 
                   </li>
                 </ul>
                 <p className="text-sm text-muted-foreground mt-4">
-                  Tokens are paid out by the hub bot on Discord. See{" "}
+                  Members with an active subscription can also claim one token every calendar
+                  month, from their profile. Tokens are paid out by the hub bot on Discord. See{" "}
                   <Link href="/economy" className="text-primary hover:underline">
                     how the token economy works
                   </Link>

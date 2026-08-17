@@ -10,7 +10,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, RefreshCw, Wallet } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, RefreshCw, Sparkles, Wallet } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -37,6 +38,14 @@ export function WalletCard({ profileDiscordId }: { profileDiscordId?: string }) 
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [subscription, setSubscription] = useState<{
+    active: boolean;
+    plan?: string;
+    renewsAt?: string;
+  } | null>(null);
+  const [claimedThisMonth, setClaimedThisMonth] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
   async function load() {
     const response = await fetch("/api/identity/wallet", { cache: "no-store" });
@@ -51,6 +60,14 @@ export function WalletCard({ profileDiscordId }: { profileDiscordId?: string }) 
 
   useEffect(() => {
     load().catch(() => undefined);
+    fetch("/api/identity/subscription", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setSubscription(d.subscription ?? { active: false });
+        setClaimedThisMonth(!!d.claimedThisMonth);
+      })
+      .catch(() => undefined);
     fetch("/api/identity/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setMyDiscordId(d?.account?.discordId ?? null))
@@ -63,6 +80,23 @@ export function WalletCard({ profileDiscordId }: { profileDiscordId?: string }) 
       await load();
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function claim() {
+    setClaiming(true);
+    setClaimMessage(null);
+    try {
+      const response = await fetch("/api/claim", { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "That did not work.");
+      setClaimedThisMonth(true);
+      setClaimMessage(`+${data.amount} ${data.symbol} — yours.`);
+      await load();
+    } catch (err) {
+      setClaimMessage(err instanceof Error ? err.message : "That did not work.");
+    } finally {
+      setClaiming(false);
     }
   }
 
@@ -149,6 +183,52 @@ export function WalletCard({ profileDiscordId }: { profileDiscordId?: string }) 
             </a>
           </div>
         )}
+
+        {/* Membership: the subscription as Stripe sees it, and the monthly token. */}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm font-medium">Membership</p>
+            {subscription === null ? (
+              <span className="text-xs text-muted-foreground">…</span>
+            ) : subscription.active ? (
+              <span className="text-sm">
+                {subscription.plan}
+                {subscription.renewsAt && (
+                  <span className="text-xs text-muted-foreground">
+                    {" "}
+                    · renews{" "}
+                    {new Date(subscription.renewsAt).toLocaleDateString("en-BE", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <Link href="/membership" className="text-sm text-primary hover:underline">
+                Become a member
+              </Link>
+            )}
+          </div>
+          {subscription?.active && (
+            <div className="space-y-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={claim}
+                disabled={claiming || claimedThisMonth}
+              >
+                {claiming ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                {claimedThisMonth ? "This month's token claimed" : "Claim this month's token"}
+              </Button>
+              {claimMessage && <p className="text-xs text-muted-foreground">{claimMessage}</p>}
+            </div>
+          )}
+        </div>
 
         {data.wallet && (
           <div className="rounded-lg border border-dashed p-3 space-y-1.5">

@@ -19,6 +19,8 @@ import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
 import { ReactionBar } from "@/components/proposals/reaction-bar";
 import { ProposalFacts } from "@/components/proposals/facts";
+import { AttendButton } from "@/components/proposals/attend-button";
+import { TOKEN_SYMBOL } from "@/modules/payments/chain";
 import { describeChanges, prettyField, visibleChange } from "@/modules/proposals/diff-labels";
 import { avatarFor } from "@/modules/proposals/avatars";
 import { InlineDescription } from "@/components/proposals/inline-description";
@@ -418,6 +420,36 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                     This proposal needs to gather enough resources to go ahead.
                   </p>
                 </div>
+
+                {/* Coming along is the first way to help. */}
+                <div className="space-y-2">
+                  <p className="text-sm tabular-nums">
+                    <span className="font-medium">{seats}</span>
+                    <span className="text-muted-foreground">
+                      {proposal.minAttendees !== null && ` of at least ${proposal.minAttendees}`}
+                      {" coming"}
+                      {proposal.maxAttendees !== null && ` · max ${proposal.maxAttendees}`}
+                    </span>
+                  </p>
+                  {proposal.minAttendees !== null && seats < proposal.minAttendees && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      Still {proposal.minAttendees - seats} short of the minimum for it to happen.
+                    </p>
+                  )}
+                  <AttendButton
+                    proposalId={proposal.id}
+                    dateSet={!!proposal.confirmedSlotId}
+                    alreadyGoing={!!account && going.some((r) => r.contributorId === account.id)}
+                    full={
+                      proposal.maxAttendees !== null && seats >= proposal.maxAttendees
+                    }
+                    symbol={TOKEN_SYMBOL}
+                    signedIn={!!account}
+                  />
+                </div>
+
+                <hr className="border-border" />
+
                 <FundingMeter funding={funding} />
 
                 <hr className="border-border" />

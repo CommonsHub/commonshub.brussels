@@ -9,6 +9,8 @@ const LABELS: Record<string, string> = {
   slots: "dates",
   roomSlug: "room",
   expectedPeople: "expected people",
+  minAttendees: "minimum attendees",
+  maxAttendees: "maximum attendees",
   tickets: "price",
   audience: "who can come",
   link: "link",
