@@ -309,7 +309,7 @@ export function ProposeForm({
               selected={roomSlug}
               onSelect={setRoomSlug}
               expectedPeople={expectedPeople}
-              dates={slots.map((s) => s.date)}
+              slots={slots}
             />
           </div>
 

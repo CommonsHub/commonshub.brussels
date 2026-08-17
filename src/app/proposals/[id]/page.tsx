@@ -18,6 +18,9 @@ import { Contributors } from "@/components/proposals/contributors";
 import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
 import { ReactionBar } from "@/components/proposals/reaction-bar";
+import { ProposalFacts } from "@/components/proposals/facts";
+import { InlineDescription } from "@/components/proposals/inline-description";
+import { bookableRooms } from "@/modules/proposals/funding";
 import { Pencil } from "lucide-react";
 import { ContributePanel } from "@/components/proposals/contribute-panel";
 import { CommentBox } from "@/components/proposals/comment-box";
@@ -82,6 +85,14 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   const wallet = account ? await userWallet(account.id).catch(() => null) : null;
   const tokenBalance = wallet?.balance ?? null;
 
+  const roomOptions = bookableRooms().map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    capacity: r.capacity,
+    pricePerHour: r.pricePerHour ?? 0,
+    tokensPerHour: r.tokensPerHour ?? 0,
+    image: r.heroImage,
+  }));
   const mayEdit =
     !!account && (proposal.proposerId === account.id || isSteward(account));
   const photoCount = proposal.comments.reduce(
@@ -128,28 +139,17 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
               )}
             </p>
 
-            {/* The facts at a glance, before anything else. */}
-            <div className="flex flex-wrap gap-1.5 text-xs">
-              {proposal.slots.map((slot) => (
-                <span key={slot.id} className="rounded-full border px-2.5 py-1">
-                  {whenShort(slot)}
-                </span>
-              ))}
-              <span className="rounded-full border px-2.5 py-1">
-                {room ? room.name : "Any room"}
-              </span>
-              <span className="rounded-full border px-2.5 py-1">~{proposal.expectedPeople} people</span>
-              <span className="rounded-full border px-2.5 py-1">
-                {proposal.tickets.eur || proposal.tickets.tokens
-                  ? [
-                      proposal.tickets.eur ? formatEur(proposal.tickets.eur) : null,
-                      proposal.tickets.tokens ? formatTokens(proposal.tickets.tokens) : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-                  : "Free"}
-              </span>
-            </div>
+            {/* The facts at a glance — and, for the author, each one editable in place. */}
+            <ProposalFacts
+              proposalId={proposal.id}
+              mayEdit={mayEdit}
+              rooms={roomOptions}
+              roomName={room?.name ?? null}
+              slots={proposal.slots.map(({ date, start, duration }) => ({ date, start, duration }))}
+              roomSlug={proposal.roomSlug}
+              expectedPeople={proposal.expectedPeople}
+              tickets={proposal.tickets}
+            />
 
             <Link
               href={`/events/${proposal.eventSlug}`}
@@ -171,21 +171,11 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
             <Card>
               <CardContent className="pt-6 space-y-3">
                 {proposal.pitch && <p className="font-medium">{proposal.pitch}</p>}
-                {proposal.description ? (
-                  <p className="text-muted-foreground whitespace-pre-wrap">{proposal.description}</p>
-                ) : mayEdit ? (
-                  <p className="text-muted-foreground">
-                    <Link
-                      href={`/proposals/${proposal.number}/edit`}
-                      className="text-primary hover:underline"
-                    >
-                      Add a description
-                    </Link>{" "}
-                    — say what happens, who it is for, what to bring.
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground italic">No description provided.</p>
-                )}
+                <InlineDescription
+                  proposalId={proposal.id}
+                  description={proposal.description}
+                  mayEdit={mayEdit}
+                />
                 <ReactionBar
                   proposalId={proposal.id}
                   targetId="proposal"
