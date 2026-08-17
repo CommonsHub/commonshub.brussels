@@ -126,8 +126,11 @@ export interface Proposal {
   status: ProposalStatus;
 
   title: string;
+  /** Kept for proposals written when the form asked for one; no longer asked. */
   pitch: string;
   description: string;
+  /** Where the event lives elsewhere, if it does — a Luma or Eventbrite page. */
+  link: string | null;
 
   slots: Slot[];
   /** Set once a slot has been picked. */
@@ -161,8 +164,8 @@ export interface Proposal {
 /** The shape accepted from the propose form. */
 export interface ProposalDraft {
   title: string;
-  pitch: string;
   description: string;
+  link: string | null;
   slots: Array<Omit<Slot, "id">>;
   roomSlug: string | null;
   expectedPeople: number;

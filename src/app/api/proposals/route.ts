@@ -19,8 +19,14 @@ const slotSchema = z.object({
 
 const schema = z.object({
   title: z.string().min(3).max(140),
-  pitch: z.string().max(140).default(""),
   description: z.string().max(8000).default(""),
+  link: z
+    .string()
+    .trim()
+    .url("That link does not look like a URL — include the https://.")
+    .max(500)
+    .nullable()
+    .or(z.literal("").transform(() => null)),
   slots: z.array(slotSchema).min(1).max(6),
   roomSlug: z.string().nullable(),
   expectedPeople: z.number().int().min(1).max(500),

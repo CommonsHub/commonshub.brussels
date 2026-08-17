@@ -105,6 +105,7 @@ function project(events: ProposalEvent[]): Proposal | null {
     refunds: first.proposal.refunds ?? [],
     number: first.proposal.number ?? 0,
     eventSlug: first.proposal.eventSlug ?? first.proposal.slug,
+    link: first.proposal.link ?? null,
   };
 
   for (const event of events.slice(1)) {
@@ -336,8 +337,9 @@ export function createProposal(
     version: 1,
     status: options?.status ?? "open",
     title: draft.title,
-    pitch: draft.pitch,
+    pitch: "",
     description: draft.description,
+    link: draft.link,
     slots,
     confirmedSlotId: slots.length === 1 ? slots[0].id : null,
     roomSlug: draft.roomSlug,

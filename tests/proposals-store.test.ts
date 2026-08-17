@@ -24,8 +24,8 @@ const author = { id: "acc_1", name: "Ana" };
 function draft(overrides: Record<string, unknown> = {}) {
   return {
     title: "Repair café",
-    pitch: "Fix it together instead of binning it.",
     description: "Bring a lamp, a laptop, a jacket.",
+    link: null,
     slots: [{ date: "2026-09-19", start: "14:00", duration: 4 }],
     roomSlug: "ostrom",
     expectedPeople: 25,

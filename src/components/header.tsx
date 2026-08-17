@@ -24,10 +24,20 @@ export function Header() {
   // Someone can be signed in without Discord — by email or with a passkey — so
   // the header asks the hub who it is talking to as well.
   const [hubAccount, setHubAccount] = useState<Me | null>(null);
+  const [hubBalance, setHubBalance] = useState<number | null>(null);
   useEffect(() => {
     let cancelled = false;
     fetchMe()
-      .then((account) => !cancelled && setHubAccount(account))
+      .then((account) => {
+        if (cancelled) return;
+        setHubAccount(account);
+        if (account?.discordId) {
+          fetch(`/api/member/${account.discordId}/tokens`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => !cancelled && d && setHubBalance(Number(d.balance ?? 0)))
+            .catch(() => undefined);
+        }
+      })
       .catch(() => undefined);
     return () => {
       cancelled = true;
@@ -201,7 +211,7 @@ export function Header() {
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Coins className="w-3.5 h-3.5" />
                         <span>
-                          {balance !== null ? `${balance} CHT` : "..."}
+                          {balance !== null ? `${balance} tokens` : "..."}
                         </span>
                       </div>
 
@@ -220,39 +230,57 @@ export function Header() {
                       )}
                     </div>
                   </Link>
-                  <Button
-                    variant="outline"
-                    className="w-full"
+                  <button
+                    type="button"
                     onClick={signOutEverywhere}
+                    className="self-start text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 px-1"
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
+                    <LogOut className="w-3.5 h-3.5" />
                     Sign out
-                  </Button>
+                  </button>
                 </div>
               ) : hubAccount ? (
                 // Signed in by email or passkey — no Discord session to read.
                 <div className="flex flex-col gap-3 pt-2">
-                  <div className="p-3 rounded-lg bg-muted">
-                    <p className="font-medium">{hubAccount.displayName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {hubAccount.hasDiscord
-                        ? "Signed in"
-                        : "Connect Discord to use your tokens"}
-                    </p>
-                  </div>
+                  <Link
+                    href={hubAccount.hasDiscord ? `/members/${hubAccount.displayName}` : "/signin"}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent transition-colors"
+                  >
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        {hubAccount.displayName.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="font-medium text-sm truncate">{hubAccount.displayName}</p>
+                      {hubAccount.hasDiscord && hubBalance !== null ? (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Coins className="w-3.5 h-3.5" />
+                          <span>{hubBalance} tokens</span>
+                        </div>
+                      ) : hubAccount.hasDiscord ? (
+                        <p className="text-xs text-muted-foreground">…</p>
+                      ) : null}
+                    </div>
+                  </Link>
                   {!hubAccount.hasDiscord && (
                     <Button
                       variant="outline"
                       className="w-full"
                       onClick={() => signIn("discord", { callbackUrl: "/signin?link=1" })}
                     >
-                      Connect Discord
+                      Connect Discord to see your tokens
                     </Button>
                   )}
-                  <Button variant="outline" className="w-full" onClick={signOutEverywhere}>
-                    <LogOut className="w-4 h-4 mr-2" />
+                  <button
+                    type="button"
+                    onClick={signOutEverywhere}
+                    className="self-start text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 px-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
                     Sign out
-                  </Button>
+                  </button>
                 </div>
               ) : (
                 <Button variant="outline" className="w-full" asChild>

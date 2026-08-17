@@ -150,6 +150,19 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           </div>
         )}
 
+        {proposal.link && (
+          <p>
+            <a
+              href={proposal.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline inline-flex items-center gap-1"
+            >
+              Event page elsewhere <ExternalLink className="w-4 h-4" />
+            </a>
+          </p>
+        )}
+
         {proposal.status !== "confirmed" && (
           <Card>
             <CardContent className="pt-6 space-y-4">

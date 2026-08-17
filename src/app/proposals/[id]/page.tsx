@@ -320,6 +320,19 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                         : "Invite only"}
                   </p>
                 </div>
+                {proposal.link && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Link</p>
+                    <a
+                      href={proposal.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-primary hover:underline break-all"
+                    >
+                      {proposal.link.replace(/^https?:\/\//, "")}
+                    </a>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Tickets</p>
                   <p className="font-medium">

@@ -21,8 +21,8 @@ const author = { id: "acc_1", name: "Ana" };
 function draft(title: string) {
   return {
     title,
-    pitch: "",
     description: "",
+    link: null,
     slots: [{ date: "2026-09-19", start: "14:00", duration: 4 }],
     roomSlug: "ostrom",
     expectedPeople: 25,

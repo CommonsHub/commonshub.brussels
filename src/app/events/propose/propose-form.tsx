@@ -34,7 +34,7 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
   const router = useRouter();
 
   const [title, setTitle] = useState("");
-  const [pitch, setPitch] = useState("");
+  const [link, setLink] = useState("");
   const [description, setDescription] = useState("");
   const [slots, setSlots] = useState<SlotDraft[]>([emptySlot()]);
   const [roomSlug, setRoomSlug] = useState<string | null>(null);
@@ -107,8 +107,8 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          pitch: pitch.trim(),
           description: description.trim(),
+          link: link.trim() || null,
           slots,
           roomSlug,
           expectedPeople,
@@ -163,17 +163,6 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pitch">One line</Label>
-            <Input
-              id="pitch"
-              value={pitch}
-              maxLength={140}
-              onChange={(e) => setPitch(e.target.value)}
-              placeholder="Fix it together instead of binning it."
-            />
-            <p className="text-xs text-muted-foreground">{pitch.length}/140</p>
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
@@ -181,6 +170,17 @@ export function ProposeForm({ rooms, me }: { rooms: RoomOption[]; me: Me | null 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What happens, who it is for, what people should bring."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link">Link (optional)</Label>
+            <Input
+              id="link"
+              type="url"
+              inputMode="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="A Luma or Eventbrite page, if the event has one"
             />
           </div>
         </CardContent>
