@@ -19,6 +19,7 @@ import { WhatsMissing } from "@/components/proposals/whats-missing";
 import { ActivityLog } from "@/components/proposals/activity-log";
 import { ReactionBar } from "@/components/proposals/reaction-bar";
 import { ProposalFacts } from "@/components/proposals/facts";
+import { prettyField, visibleChange } from "@/modules/proposals/diff-labels";
 import { InlineDescription } from "@/components/proposals/inline-description";
 import { bookableRooms } from "@/modules/proposals/funding";
 import { Pencil } from "lucide-react";
@@ -234,13 +235,13 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
                       updated this — version {item.revision.version} · {ago(item.at)}
                     </p>
                     <div className="font-mono text-xs space-y-0.5">
-                      {item.revision.changes.map((change) => (
+                      {item.revision.changes.filter((c) => visibleChange(c.field)).map((change) => (
                         <div key={change.field}>
                           <div className="text-destructive">
-                            − {change.field}: {change.from}
+                            − {prettyField(change.field)}: {change.from}
                           </div>
                           <div className="text-primary">
-                            + {change.field}: {change.to}
+                            + {prettyField(change.field)}: {change.to}
                           </div>
                         </div>
                       ))}

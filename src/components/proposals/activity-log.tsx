@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { formatEur, formatTokens } from "@/modules/proposals/funding";
 import { statusLabel } from "@/components/proposals/status";
+import { prettyField, visibleChange } from "@/modules/proposals/diff-labels";
 import type { TimelineItem } from "@/modules/proposals/store";
 
 function ago(iso: string): string {
@@ -94,8 +95,11 @@ export function ActivityLog({ items, slug }: { items: TimelineItem[]; slug: stri
           return (
             <li key={index}>
               <span className="font-medium">{item.revision.authorName}</span> changed{" "}
-              {item.revision.changes.map((c) => c.field).join(", ")} — version{" "}
-              {item.revision.version}
+              {item.revision.changes
+                .filter((c) => visibleChange(c.field))
+                .map((c) => prettyField(c.field))
+                .join(", ") || "the details"}{" "}
+              — version {item.revision.version}
               {time}
             </li>
           );

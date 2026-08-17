@@ -27,7 +27,8 @@ import type {
   Slot,
   TicketPricing,
 } from "./types";
-import { bookedHours, fundingProgress, fundingTarget } from "./funding";
+import { bookedHours, fundingProgress, fundingTarget, getRoom } from "./funding";
+import { prettyField, visibleChange } from "./diff-labels";
 
 export const PROPOSALS_DIR =
   process.env.PROPOSALS_DIR || path.join(process.cwd(), ".data", "proposals");
@@ -384,13 +385,27 @@ export function createProposal(
   return proposal;
 }
 
-/** Field-by-field diff, so the thread can show what a revision changed. */
+/**
+ * Field-by-field diff, in words a reader recognises: room slugs become room
+ * names, audiences read as sentences, long text is trimmed. What the thread
+ * shows is exactly what is stored.
+ */
 export function diffProposal(before: Proposal, patch: Partial<Proposal>): Revision["changes"] {
   const changes: Revision["changes"] = [];
   const describe = (field: string, value: unknown): string => {
-    if (value === null || value === undefined) return "—";
+    if (value === null || value === undefined) return field === "roomSlug" ? "any room" : "—";
     if (field === "slots") {
       return (value as Slot[]).map((s) => `${s.date} ${s.start} (${s.duration}h)`).join(" · ");
+    }
+    if (field === "roomSlug") {
+      return getRoom(String(value))?.name ?? String(value);
+    }
+    if (field === "audience") {
+      return value === "public"
+        ? "open to everyone"
+        : value === "members"
+          ? "members only"
+          : "invite only";
     }
     if (field === "tickets") {
       const t = value as TicketPricing;
@@ -403,13 +418,15 @@ export function diffProposal(before: Proposal, patch: Partial<Proposal>): Revisi
         .filter(Boolean)
         .join(" · ");
     }
-    return String(value);
+    const text = String(value);
+    return text.length > 80 ? `${text.slice(0, 77)}…` : text;
   };
 
   for (const [field, value] of Object.entries(patch)) {
+    if (!visibleChange(field)) continue;
     const from = describe(field, (before as unknown as Record<string, unknown>)[field]);
     const to = describe(field, value);
-    if (from !== to) changes.push({ field, from, to });
+    if (from !== to) changes.push({ field: prettyField(field), from, to });
   }
   return changes;
 }

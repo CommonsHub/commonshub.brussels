@@ -65,7 +65,10 @@ describe("the proposal log", () => {
     const revision = revised?.revisions[0];
     expect(revision?.authorName).toBe("Karim");
     expect(revision?.changes).toEqual(
-      expect.arrayContaining([{ field: "roomSlug", from: "ostrom", to: "playroom" }]),
+      expect.arrayContaining([
+        { field: "room", from: "Ostrom Room", to: "Playroom" },
+        { field: "expected people", from: "25", to: "10" },
+      ]),
     );
 
     // The original values are still in the log.
