@@ -25,6 +25,7 @@ export function ContributePanel({
   discordLinked,
   tokenBalance,
   walletAddress,
+  tokensOnly = false,
 }: {
   proposalId: string;
   ticketEur: number | null;
@@ -35,6 +36,8 @@ export function ContributePanel({
   discordLinked: boolean;
   tokenBalance: number | null;
   walletAddress: string | null;
+  /** One currency for now: skip the euros-or-tokens question entirely. */
+  tokensOnly?: boolean;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("closed");
@@ -209,7 +212,12 @@ export function ContributePanel({
           Paid from your website wallet, straight from here. No admin fee on tokens.
         </p>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button variant="ghost" size="sm" onClick={() => setStep("currency")} disabled={busy !== null}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setStep(tokensOnly ? "closed" : "currency")}
+          disabled={busy !== null}
+        >
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
       </div>
@@ -244,8 +252,8 @@ export function ContributePanel({
   // ── closed: one door in ──
   return (
     <div className="space-y-2">
-      <Button onClick={() => setStep("currency")} className="w-full">
-        Contribute
+      <Button onClick={() => setStep(tokensOnly ? "tokens" : "currency")} className="w-full">
+        {tokensOnly ? "Chip in tokens" : "Contribute"}
       </Button>
       {hasTicket && freeForMembers && isMember && (
         <p className="text-xs text-muted-foreground text-center">Members come free.</p>
