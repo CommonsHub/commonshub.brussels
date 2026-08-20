@@ -4,7 +4,6 @@ import * as path from "path";
 import { fromZonedTime } from "date-fns-tz";
 import { DATA_DIR } from "@/lib/data-paths";
 
-export const revalidate = 300;
 
 interface ExportEvent {
   id?: string;
@@ -408,6 +407,9 @@ function renderMarkdownToHtml(markdown: string, since: string, until: string): s
 </body>
 </html>`;
 }
+
+// Reads the dataset volume, so never prerender it.
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
