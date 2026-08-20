@@ -7,6 +7,7 @@ import {
   DEBT_REVALIDATE_SECONDS,
   DEBT_SHEET_URL,
   formatDay,
+  formatDayParts,
   formatEuro,
   loadDebtLedger,
   type DebtLedger,
@@ -55,6 +56,17 @@ function Stat({
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+/** Day over year, so the column can stay narrow on a phone. */
+function DateCell({ iso }: { iso: string }) {
+  const { day, year } = formatDayParts(iso);
+  return (
+    <span className="block leading-tight">
+      <span className="block whitespace-nowrap">{day}</span>
+      <span className="block text-xs text-muted-foreground">{year}</span>
+    </span>
   );
 }
 
@@ -114,58 +126,60 @@ function Ledger({ ledger }: { ledger: DebtLedger }) {
         </p>
 
         <Card className="overflow-hidden py-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left">
-                  <th className="px-4 py-3 font-semibold">Holder</th>
-                  <th className="px-4 py-3 font-semibold hidden sm:table-cell">Since</th>
-                  <th className="px-4 py-3 font-semibold hidden md:table-cell">Last movement</th>
-                  <th className="px-4 py-3 font-semibold hidden lg:table-cell w-40">Share</th>
-                  <th className="px-4 py-3 font-semibold text-right">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {holders.map((holder) => (
-                  <tr key={holder.name} className={holder.balance === 0 ? "text-muted-foreground" : ""}>
-                    <td className="px-4 py-3">
-                      <span className="font-medium">{holder.name}</span>
-                      {holder.balance === 0 && (
-                        <Badge variant="outline" className="ml-2 text-xs font-normal">
-                          settled
-                        </Badge>
-                      )}
-                      <span className="block sm:hidden text-xs text-muted-foreground">
-                        since {formatDay(holder.firstAt)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground">
-                      {formatDay(holder.firstAt)}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
-                      {formatDay(holder.lastAt)}
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <ShareBar value={holder.balance} of={totals.outstanding} />
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {formatEuro(holder.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 bg-muted/40 font-semibold">
-                  <td className="px-4 py-3" colSpan={4}>
-                    Total outstanding
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left">
+                <th className="px-3 sm:px-4 py-3 font-semibold">Holder</th>
+                <th className="px-4 py-3 font-semibold hidden sm:table-cell">Since</th>
+                <th className="px-4 py-3 font-semibold hidden md:table-cell">Last movement</th>
+                <th className="px-4 py-3 font-semibold hidden lg:table-cell w-40">Share</th>
+                <th className="px-3 sm:px-4 py-3 font-semibold text-right">Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {holders.map((holder) => (
+                <tr key={holder.name} className={holder.balance === 0 ? "text-muted-foreground" : ""}>
+                  <td className="px-3 sm:px-4 py-3">
+                    <span className="font-medium">{holder.name}</span>
+                    {holder.balance === 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs font-normal">
+                        settled
+                      </Badge>
+                    )}
+                    <span className="block sm:hidden text-xs text-muted-foreground">
+                      since {formatDay(holder.firstAt)}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatEuro(totals.outstanding)}
+                  <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground">
+                    {formatDay(holder.firstAt)}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
+                    {formatDay(holder.lastAt)}
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <ShareBar value={holder.balance} of={totals.outstanding} />
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 text-right font-mono tabular-nums whitespace-nowrap">
+                    {formatEuro(holder.balance)}
                   </td>
                 </tr>
-              </tfoot>
-            </table>
-          </div>
+              ))}
+            </tbody>
+            <tfoot>
+              {/* One footer cell per column, mirroring the same responsive
+                  visibility: a colSpan across hidden columns makes the table
+                  wider than the phone it is on. */}
+              <tr className="border-t-2 bg-muted/40 font-semibold">
+                <td className="px-3 sm:px-4 py-3">Total outstanding</td>
+                <td className="hidden sm:table-cell" />
+                <td className="hidden md:table-cell" />
+                <td className="hidden lg:table-cell" />
+                <td className="px-3 sm:px-4 py-3 text-right font-mono tabular-nums whitespace-nowrap">
+                  {formatEuro(totals.outstanding)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </Card>
       </section>
 
@@ -178,71 +192,69 @@ function Ledger({ ledger }: { ledger: DebtLedger }) {
         </p>
 
         <Card className="overflow-hidden py-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left">
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 font-semibold">Holder</th>
-                  <th className="px-4 py-3 font-semibold hidden md:table-cell">What for</th>
-                  <th className="px-4 py-3 font-semibold text-right">Amount</th>
-                  <th className="px-4 py-3 font-semibold text-right hidden sm:table-cell">
-                    Their balance
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {recent.map((transaction, index) => (
-                  <tr key={`${transaction.date}-${transaction.name}-${index}`}>
-                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                      {formatDay(transaction.date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-medium">{transaction.name}</span>
-                      <span className="block md:hidden text-xs text-muted-foreground">
-                        {transaction.comment}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-muted-foreground max-w-md">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left">
+                <th className="pl-3 sm:pl-4 pr-2 py-3 font-semibold w-px">Date</th>
+                <th className="px-2 sm:px-4 py-3 font-semibold">Holder</th>
+                <th className="px-4 py-3 font-semibold hidden md:table-cell">What for</th>
+                <th className="pl-2 pr-3 sm:pr-4 py-3 font-semibold text-right">Amount</th>
+                <th className="px-4 py-3 font-semibold text-right hidden sm:table-cell">
+                  Their balance
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y align-top">
+              {recent.map((transaction, index) => (
+                <tr key={`${transaction.date}-${transaction.name}-${index}`}>
+                  <td className="pl-3 sm:pl-4 pr-2 py-3 text-muted-foreground w-px">
+                    <DateCell iso={transaction.date} />
+                  </td>
+                  <td className="px-2 sm:px-4 py-3">
+                    <span className="font-medium">{transaction.name}</span>
+                    <span className="block md:hidden text-xs text-muted-foreground">
                       {transaction.comment}
-                      {transaction.referenceUrl && (
-                        <a
-                          href={transaction.referenceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline inline-flex items-center gap-0.5 ml-1"
-                        >
-                          decision <ArrowUpRight className="w-3 h-3" />
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <span
-                        className="font-mono tabular-nums"
-                        style={transaction.type === "BURN" ? { color: TEAL } : undefined}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground max-w-md">
+                    {transaction.comment}
+                    {transaction.referenceUrl && (
+                      <a
+                        href={transaction.referenceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-0.5 ml-1"
                       >
-                        {formatEuro(transaction.amount, { sign: true })}
-                      </span>
-                      {transaction.txUrl && (
-                        <a
-                          href={transaction.txUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="See it on-chain"
-                          className="text-muted-foreground hover:text-primary inline-flex ml-1.5 align-middle"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums hidden sm:table-cell text-muted-foreground">
-                      {formatEuro(transaction.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        decision <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                  </td>
+                  <td className="pl-2 pr-3 sm:pr-4 py-3 text-right whitespace-nowrap">
+                    <span
+                      className="font-mono tabular-nums"
+                      style={transaction.type === "BURN" ? { color: TEAL } : undefined}
+                    >
+                      {formatEuro(transaction.amount, { sign: true })}
+                    </span>
+                    {transaction.txUrl && (
+                      <a
+                        href={transaction.txUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="See it on-chain"
+                        className="text-muted-foreground hover:text-primary inline-flex ml-1.5 align-middle"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums hidden sm:table-cell text-muted-foreground whitespace-nowrap">
+                    {formatEuro(transaction.balance)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       </section>
     </>

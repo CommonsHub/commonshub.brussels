@@ -306,3 +306,16 @@ export function formatDay(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleDateString("en-BE", { day: "numeric", month: "short", year: "numeric" });
 }
+
+/**
+ * The same date split in two, so a narrow column can put the year on its own
+ * line instead of forcing every row wide enough for "22 Apr 2026".
+ */
+export function formatDayParts(iso: string): { day: string; year: string } {
+  const date = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return { day: iso, year: "" };
+  return {
+    day: date.toLocaleDateString("en-BE", { day: "numeric", month: "short" }),
+    year: String(date.getFullYear()),
+  };
+}
