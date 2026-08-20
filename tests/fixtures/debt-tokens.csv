@@ -1,0 +1,45 @@
+date,type,name,amount,running balance,comment,VAT,link,tx hash
+16/05/2024,MINT,Xavier,10 000 €,10 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0xfd985322e5fe9fceceda3ec6c8b4bbc33f71b6c73224da9fd6476db76026df4b
+18/05/2024,MINT,Jan Willems,2 000 €,2 000 €,Initial funding,,,
+20/05/2024,MINT,Jonas,5 000 €,5 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0x1228b71cdc6dd74f743ec594bff825cfacda39fb4beceb90effa4cc102bb97e4
+21/05/2024,MINT,Timothée,2 000 €,2 000 €,Initial funding,,,
+21/05/2024,MINT,Kris,2 000 €,2 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0x720d59c4efe61030e3af638546dfc9db98d245770eca17a7faa9799d389240cb
+22/05/2024,MINT,Kévin,2 000 €,2 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0x36385a4340b10e631bc64e3bef6a5c68f50d7d7084be725a882f9c99cda2b9c0
+22/05/2024,MINT,Friedger,5 000 €,5 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0x5e482f6d69825a1882611e88739afb349f3e7bee95bd3f34f9fa24d70718ccf7
+22/05/2024,MINT,Adina,5 000 €,5 000 €,Initial funding,,,
+01/06/2024,MINT,Vincent,2 000 €,2 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0x15d1c6405d71ad5c71c725bdab72ca84a8e9d4aecaca88a845d6050613820548
+04/06/2024,MINT,Baudouin,10 000 €,10 000 €,Initial funding,,,
+04/06/2024,MINT,Daniel,5 000 €,5 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0xb2c572a725647b3dea0b11fbba11bfd4ebe679ce5c96c7f6ba7cc900f277700f
+04/06/2024,MINT,Alexandre-Philippe,2 000 €,2 000 €,Initial funding,,,
+04/06/2024,MINT,Alain Boribon,2 500 €,2 500 €,Initial funding,,,
+6/6/2024,MINT,Thoralf,5 000 €,5 000 €,Initial funding,,,
+16/07/2024,MINT,Leen,2 000 €,2 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0xf4cd0a1f835637c32488e98fc6ec317a7973ff2f0d71dc2a00daa832335fce6a
+01/08/2024,MINT,Leen,1 000 €,3 000 €,debt token for part time work,,,https://txinfo.xyz/gnosis/tx/0xb01cb1ae9f82980952d186b27b779d1700da93524c241fc2983b8efdfb78180c
+02/08/2024,MINT,Bastien,2 000 €,2 000 €,Initial funding,,,https://txinfo.xyz/gnosis/tx/0xb23e7496d3102e204fef70de600ab84733082ab761e66a142a1ce613960f1d28
+29/08/2024,MINT,BeImpact,2 500 €,2 500 €,Initial funding,,,
+01/09/2024,MINT,Leen,1 000 €,4 000 €,debt token for part time work,,,https://txinfo.xyz/gnosis/tx/0xa09fe30212b2b261d0661da5ee7213b68f17231c605ef0f187030db4fad45912
+01/10/2024,MINT,Leen,1 000 €,5 000 €,debt token for part time work,,,https://txinfo.xyz/gnosis/tx/0x1ec17aa32abc8cb52763514378669a21d7d7f024e9b7e14afed9e9b2fcb3f2f3
+01/11/2024,MINT,Leen,1 000 €,6 000 €,debt token for part time work,,,https://txinfo.xyz/gnosis/tx/0xf1a67018999fec4aaf558381908e6b7725b5cf4116faee395bc3ae07b3dace59
+01/12/2024,MINT,Leen,1 000 €,7 000 €,debt token for part time work,,,https://txinfo.xyz/gnosis/tx/0xdf1351689378a8590fa01b834fe738d9a00fc310de74a82ad154c43843dbf2a1
+02/12/2024,MINT,Leen,4 000 €,11 000 €,debt token for part time work,,,
+2/12/2024,MINT,Franfin SA,2 000 €,2 000 €,part of the rent,,,
+02/01/2025,MINT,Franfin SA,2 000 €,4 000 €,part of the rent,,,
+2/2/2025,MINT,Franfin SA,2 000 €,6 000 €,part of the rent,,,
+02/03/2025,MINT,Franfin SA,2 000 €,8 000 €,part of the rent,,,
+10/03/2025,BURN,Bastien,-2 000 €,0 €,1 year coworking June 2024-2025,"347,11 €",,
+31/03/2025,BURN,BeImpact,-445 €,2 055 €,BeImpact Pitch 26/03 = 317.63€; for rest sign convention de don,"2 162,37 €",,
+01/04/2025,MINT,Franfin SA,2 000 €,10 000 €,part of the rent,,,
+01/05/2025,MINT,Franfin SA,2 000 €,12 000 €,part of the rent,,,
+19/08/2025,BURN,Daniel,-5 000 €,0 €,2 year coworking June 2024-2026,"0,00 €",,
+13/11/2025,MINT,Leen,27 000 €,38 000 €,9x 3000 for January - September 2025 full time work,,Proposal https://discord.com/channels/1280532848604086365/1435267109084201010,
+14/11/2025,MINT,Leen,4 500 €,42 500 €,"3x 1500 for October - December 2025 (50% in euros, 50% in debt tokens)",,Proposal https://discord.com/channels/1280532848604086365/1435267109084201010,
+27/03/2026,MINT,Jana,"2 416,11 €",2 416 €,Settlement bonus month - partena,,https://docs.google.com/document/d/17Z63w4v7f6ysieDGBmDi1qtqmnHNvyvyPyFaqB7OTNw/edit?tab=t.0,
+22/04/2026,MINT,Mathieu,"74,6 €",75 €,Kicker,https://discord.com/channels/1280532848604086365/1437769488677208155/1491735778164736030,,
+22/04/2026,MINT,Nicolas,1 123 €,1 123 €,Kicker,,,
+22/04/2026,MINT,Leen,1 500 €,44 000 €,February 2026,https://discord.com/channels/1280532848604086365/1492804159223894037/1496458948524507266,,
+24/04/2026,BURN,Xavier,-896 €,9 104 €,Contribution accounting costs for Citizen Wallet / Brussels Pay 2023-2024,,,
+24/04/2026,BURN,Kévin,-896 €,1 104 €,Contribution accounting costs for Citizen Wallet / Brussels Pay 2023-2024,,,
+24/04/2026,BURN,Jonas,-896 €,4 104 €,Contribution accounting costs for Citizen Wallet / Brussels Pay 2023-2024,,,
+01/06/2026,MINT,Franfin SA,6 547 €,18 547 €,Indexed rent June 2026,,,
+01/07/2026,MINT,Franfin SA,6 547 €,25 094 €,Indexed rent July 2026,,,
+01/08/2026,MINT,Franfin SA,6 547 €,31 640 €,Indexed rent August 2026,,,
