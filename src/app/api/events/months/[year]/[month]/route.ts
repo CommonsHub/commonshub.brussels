@@ -3,11 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
 
-export const revalidate = 300;
 
 /**
  * GET /api/events/[year]/[month] → DATA_DIR/[year]/[month]/generated/events.json
  */
+// Reads the dataset volume, so never prerender it.
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ year: string; month: string }> }

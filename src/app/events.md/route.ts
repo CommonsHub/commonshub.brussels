@@ -3,7 +3,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
 
-export const revalidate = 300;
 export const dynamic = "force-dynamic";
 
 export async function GET() {

@@ -3,12 +3,14 @@ import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
 
-export const revalidate = 300;
 
 /**
  * GET /api/images                    → DATA_DIR/latest/generated/images.json
  * GET /api/images?year=YYYY&month=MM → DATA_DIR/YYYY/MM/generated/images.json
  */
+// Reads the dataset volume, so never prerender it.
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const year = searchParams.get("year");
