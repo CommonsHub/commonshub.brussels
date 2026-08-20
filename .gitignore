@@ -9,3 +9,6 @@ dist/
 */private/*
 data/
 !src/app/data
+
+# Local app state (proposals, identity). Never committed.
+.data/

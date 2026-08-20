@@ -5,8 +5,6 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, MapPin, Users, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { isAdmin } from "@/lib/admin-check";
-import { applyEventMetadataOverlay } from "@/lib/event-metadata-overlay";
 import { EventsList } from "@/components/events-list";
 
 interface PageProps {
@@ -63,8 +61,7 @@ async function loadEvents(year: string, month: string): Promise<Event[]> {
   try {
     const fileContent = fs.readFileSync(filePath, "utf-8");
     const data: EventsFile = JSON.parse(fileContent);
-    // Merge any admin metadata edits, which live outside the read-only DATA_DIR.
-    return applyEventMetadataOverlay(data.events || [], year, month);
+    return data.events || [];
   } catch (error) {
     console.error(`Error reading events file:`, error);
     return [];
@@ -80,14 +77,9 @@ export default async function EventsPage({ params }: PageProps) {
   }
 
   const events = await loadEvents(year, month);
-  const userIsAdmin = await isAdmin();
   const monthName = MONTH_NAMES[parseInt(month, 10) - 1];
 
-  // Calculate statistics
   const totalEvents = events.length;
-  const totalAttendance = events.reduce((sum, event) => sum + (event.metadata.attendance || 0), 0);
-  const totalFridgeIncome = events.reduce((sum, event) => sum + (event.metadata.fridgeIncome || 0), 0);
-  const totalRentalIncome = events.reduce((sum, event) => sum + (event.metadata.rentalIncome || 0), 0);
 
   return (
     <div className="container mx-auto py-12 px-4 space-y-8">
@@ -109,7 +101,7 @@ export default async function EventsPage({ params }: PageProps) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Events</CardTitle>
@@ -122,44 +114,11 @@ export default async function EventsPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Attendance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <span className="text-2xl font-bold">{totalAttendance || "—"}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Fridge Income</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {totalFridgeIncome > 0 ? `€${totalFridgeIncome.toFixed(2)}` : "—"}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Rental Income</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {totalRentalIncome > 0 ? `€${totalRentalIncome.toFixed(2)}` : "—"}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Events List */}
       {events.length > 0 ? (
-        <EventsList events={events} isAdmin={userIsAdmin} />
+        <EventsList events={events} />
       ) : (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">

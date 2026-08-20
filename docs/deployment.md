@@ -70,15 +70,16 @@ ls -la data/
 
 Coolify deploys the single `web` container directly from `Dockerfile`. There is
 no compose file. The dataset is read from `DATA_DIR` (defaults to `/data`),
-bind-mounted **read-only** from `/data/commonshub/prod` on the host.
+bind-mounted from `/data/commonshub/prod` on the host.
 
-The read-only flag matters: a bind mount writes ownership changes through to the
-host, so a container that chowns `/data` takes the dataset away from the user the
-chb pipeline runs as. See [coolify.md](coolify.md#data) for the storage settings.
+Coolify's UI has no read-only checkbox for bind mounts, so `/data` is protected
+by file permissions instead: the container runs as uid 1001, the dataset is
+owned by the chb user, and nothing in the image writes there. See
+[coolify.md](coolify.md#coolify-has-no-read-only-checkbox).
 
-Everything the site writes — caches, sync state, admin event-metadata edits —
-goes under `RUNTIME_DIR` instead, which defaults to `/tmp/commonshub` and is
-therefore cleared on restart. See
+The website only ever writes caches, under `RUNTIME_DIR` (default
+`/tmp/commonshub`). Anything it needs to record goes out over nostr, where the
+chb pipeline picks it up. See
 [Where the site writes](coolify.md#where-the-site-writes-runtime_dir).
 
 ### 1. Create the Resource

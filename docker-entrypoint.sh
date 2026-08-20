@@ -29,35 +29,38 @@ fi
 #
 # Never chown this directory. It is a bind mount, so ownership changes made in
 # the container are written straight through to the host, taking the dataset
-# away from the user that generates it. Mount it read-only (:ro) instead — then
-# the runtime user only needs the files to be world-readable, which is what the
-# pipeline already produces.
+# away from the user that generates it. That is exactly what the old `chown -R`
+# here did, and being root is why it worked: root ignores permission bits.
+#
+# What protects the dataset is therefore not the mount flag (Coolify's UI cannot
+# set `:ro` anyway) but ownership — the files belong to the pipeline user and
+# are merely world-readable, so the unprivileged runtime user cannot write them.
+# The checks below report on exactly that, as the runtime user, and never write.
 # ============================================================
 DATA_DIR="${DATA_DIR:-/data}"
 if [ -d "$DATA_DIR" ]; then
-    # `[ -w ]` is useless here: root passes it even on a read-only bind mount.
-    # The only reliable probe is to actually try to create a file.
-    if touch "$DATA_DIR/.write-probe" 2>/dev/null; then
-        rm -f "$DATA_DIR/.write-probe"
-        echo "[data] WARNING: $DATA_DIR is writable — mount it read-only (:ro) so the site cannot modify the dataset"
-    else
-        echo "[data] $DATA_DIR is read-only"
-    fi
-
-    # Check readability as the user that will actually serve the site.
-    # su-exec needs root, so fall back to a direct test when we are already
-    # running unprivileged.
+    # Probe as the user that actually serves the site. Testing as root is
+    # meaningless: root passes `[ -w ]` even on a read-only bind mount.
     if [ "$(id -u)" = "0" ]; then
-        readable_as_nextjs="su-exec nextjs test -r"
+        as_runtime="su-exec nextjs"
     else
-        readable_as_nextjs="test -r"
+        as_runtime=""
     fi
 
-    if $readable_as_nextjs "$DATA_DIR"; then
+    if $as_runtime test -r "$DATA_DIR"; then
         echo "[data] $DATA_DIR is readable by the runtime user"
     else
         echo "[data] ERROR: $DATA_DIR is NOT readable by the runtime user — check permissions on the host"
         ls -ld "$DATA_DIR" || true
+    fi
+
+    # The only reliable writability test is to actually try to create a file.
+    if $as_runtime touch "$DATA_DIR/.write-probe" 2>/dev/null; then
+        rm -f "$DATA_DIR/.write-probe"
+        echo "[data] WARNING: the runtime user can WRITE to $DATA_DIR."
+        echo "[data]          chown it to the user running the chb pipeline so the site cannot modify the dataset."
+    else
+        echo "[data] $DATA_DIR is not writable by the runtime user"
     fi
 fi
 
