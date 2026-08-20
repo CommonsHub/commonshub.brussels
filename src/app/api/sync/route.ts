@@ -8,6 +8,7 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
+import { runtimePath } from "@/lib/runtime-paths";
 
 interface StatsMonth {
   month: string;
@@ -52,12 +53,21 @@ function runCliStats(bin: string, resource: string): StatsResult {
 }
 
 function getSyncState(): { lastSync: string | null; duration: string | null } {
-  const stateFile = path.join(DATA_DIR, "sync-state.json");
-  try {
-    return JSON.parse(fs.readFileSync(stateFile, "utf-8"));
-  } catch {
-    return { lastSync: null, duration: null };
+  // Written by /api/sync/[command]; lives under RUNTIME_DIR because DATA_DIR
+  // is read-only. Fall back to the legacy DATA_DIR location so state written
+  // before this moved is still picked up.
+  const candidates = [
+    runtimePath("sync-state.json"),
+    path.join(DATA_DIR, "sync-state.json"),
+  ];
+  for (const stateFile of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+    } catch {
+      // try the next candidate
+    }
   }
+  return { lastSync: null, duration: null };
 }
 
 function buildMonthsFromStats(

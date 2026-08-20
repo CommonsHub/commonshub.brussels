@@ -4,13 +4,13 @@
  * Caches Discord user ID to wallet address mappings to avoid repeated
  * calls to getAccountAddressFromDiscordUserId (which calls the blockchain).
  *
- * Cache is stored in data/wallet-addresses.json
+ * Cache is stored under RUNTIME_DIR (not DATA_DIR, which is read-only).
+ * Losing it on restart only costs a few blockchain lookups.
  */
 
 import * as fs from "fs";
-import * as path from "path";
-import { DATA_DIR } from "@/lib/data-paths";
-const CACHE_FILE = path.join(DATA_DIR, "wallet-addresses.json");
+import { ensureDirFor, runtimePath } from "@/lib/runtime-paths";
+const CACHE_FILE = runtimePath("wallet-addresses.json");
 
 interface WalletAddressCache {
   [discordUserId: string]: {
@@ -49,15 +49,14 @@ function loadCache(): WalletAddressCache {
  * Save the wallet address cache to disk
  */
 function saveCache(cache: WalletAddressCache): void {
-  try {
-    // Ensure data directory exists
-    const dataDir = path.dirname(CACHE_FILE);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
+  // Keep the in-memory copy authoritative even if the disk write fails, so a
+  // read-only or missing RUNTIME_DIR degrades to a per-process cache.
+  memoryCache = cache;
 
+  if (!ensureDirFor(CACHE_FILE)) return;
+
+  try {
     fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), "utf-8");
-    memoryCache = cache;
   } catch (error) {
     console.error("[wallet-cache] Error saving cache:", error);
   }

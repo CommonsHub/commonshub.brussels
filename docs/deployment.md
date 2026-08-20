@@ -68,9 +68,18 @@ ls -la data/
 
 ## Coolify
 
-Coolify deploys the single `web` container directly from `Dockerfile`. There
-is no compose file and no persistent volume: the dataset is baked into the image
-at build time and read from `DATA_DIR` (defaults to `/data`).
+Coolify deploys the single `web` container directly from `Dockerfile`. There is
+no compose file. The dataset is read from `DATA_DIR` (defaults to `/data`),
+bind-mounted **read-only** from `/data/commonshub/prod` on the host.
+
+The read-only flag matters: a bind mount writes ownership changes through to the
+host, so a container that chowns `/data` takes the dataset away from the user the
+chb pipeline runs as. See [coolify.md](coolify.md#data) for the storage settings.
+
+Everything the site writes — caches, sync state, admin event-metadata edits —
+goes under `RUNTIME_DIR` instead, which defaults to `/tmp/commonshub` and is
+therefore cleared on restart. See
+[Where the site writes](coolify.md#where-the-site-writes-runtime_dir).
 
 ### 1. Create the Resource
 

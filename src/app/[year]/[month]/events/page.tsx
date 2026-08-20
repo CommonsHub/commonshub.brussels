@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, MapPin, Users, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { isAdmin } from "@/lib/admin-check";
+import { applyEventMetadataOverlay } from "@/lib/event-metadata-overlay";
 import { EventsList } from "@/components/events-list";
 
 interface PageProps {
@@ -62,7 +63,8 @@ async function loadEvents(year: string, month: string): Promise<Event[]> {
   try {
     const fileContent = fs.readFileSync(filePath, "utf-8");
     const data: EventsFile = JSON.parse(fileContent);
-    return data.events || [];
+    // Merge any admin metadata edits, which live outside the read-only DATA_DIR.
+    return applyEventMetadataOverlay(data.events || [], year, month);
   } catch (error) {
     console.error(`Error reading events file:`, error);
     return [];

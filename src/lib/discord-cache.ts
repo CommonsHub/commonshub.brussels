@@ -7,6 +7,7 @@ import { toZonedTime } from "date-fns-tz"
 import * as fs from "fs"
 import * as path from "path"
 import { DATA_DIR } from "./data-paths"
+import { ensureDirFor, runtimePath } from "./runtime-paths"
 const TIMEZONE = process.env.TZ || "Europe/Brussels"
 
 const memoryCache = new Map<string, CachedMessage[]>()
@@ -60,12 +61,24 @@ function isFileSystemAvailable(): boolean {
 }
 
 /**
- * Get cache file path for a specific channel and month
+ * Path to the pipeline-generated messages for a channel/month, inside the
+ * read-only DATA_DIR.
  * Format: data/{year}/{month}/messages/discord/{channelId}/messages.json
  */
 function getChannelMonthCachePath(channelId: string, year: string, month: string): string {
   if (!path) return ""
   return path.join(DATA_DIR, year, month, "messages", "discord", channelId, "messages.json")
+}
+
+/**
+ * Path to the runtime cache for a channel/month, mirroring the DATA_DIR layout
+ * under RUNTIME_DIR. DATA_DIR is read-only, so messages fetched live at runtime
+ * are cached here instead. This copy is newer than the DATA_DIR one whenever it
+ * exists, so reads prefer it.
+ */
+function getRuntimeChannelMonthCachePath(channelId: string, year: string, month: string): string {
+  if (!path) return ""
+  return runtimePath("messages", "discord", channelId, year, month, "messages.json")
 }
 
 /**
@@ -76,8 +89,35 @@ export function getCachedMonths(channelId: string): string[] {
 
   const months: string[] = []
 
+  // Months cached at runtime, which DATA_DIR may not know about yet.
   try {
-    if (!fs.existsSync(DATA_DIR)) return months
+    const runtimeChannelDir = runtimePath("messages", "discord", channelId)
+    if (fs.existsSync(runtimeChannelDir)) {
+      const years = fs
+        .readdirSync(runtimeChannelDir, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
+        .map((dirent) => dirent.name)
+
+      for (const year of years) {
+        const yearPath = path.join(runtimeChannelDir, year)
+        const monthDirs = fs
+          .readdirSync(yearPath, { withFileTypes: true })
+          .filter((dirent) => dirent.isDirectory() && /^\d{2}$/.test(dirent.name))
+          .map((dirent) => dirent.name)
+
+        for (const month of monthDirs) {
+          if (fs.existsSync(path.join(yearPath, month, "messages.json"))) {
+            months.push(`${year}-${month}`)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading runtime cached months for channel ${channelId}:`, error)
+  }
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) return Array.from(new Set(months)).sort()
 
     // Read all year directories
     const years = fs
@@ -108,7 +148,8 @@ export function getCachedMonths(channelId: string): string[] {
     console.error(`Error reading cached months for channel ${channelId}:`, error)
   }
 
-  return months.sort()
+  // A month can appear in both the runtime cache and DATA_DIR.
+  return Array.from(new Set(months)).sort()
 }
 
 /**
@@ -117,41 +158,49 @@ export function getCachedMonths(channelId: string): string[] {
 export function readChannelMonthCache(channelId: string, monthKey: string): CachedMessage[] {
   if (!isFileSystemAvailable() || !fs) return []
 
-  try {
-    const [year, month] = monthKey.split("-")
-    const filePath = getChannelMonthCachePath(channelId, year, month)
+  const [year, month] = monthKey.split("-")
 
-    if (filePath && fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, "utf-8")
-      const cache: ChannelCache = JSON.parse(content)
-      return cache.messages || []
+  // Runtime cache first (written by a live fetch, so newer), then the
+  // pipeline-generated copy in the read-only DATA_DIR.
+  const candidates = [
+    getRuntimeChannelMonthCachePath(channelId, year, month),
+    getChannelMonthCachePath(channelId, year, month),
+  ]
+
+  for (const filePath of candidates) {
+    try {
+      if (filePath && fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, "utf-8")
+        const cache: ChannelCache = JSON.parse(content)
+        return cache.messages || []
+      }
+    } catch (error) {
+      console.error(`Error reading cache for ${channelId}/${monthKey}:`, error)
     }
-  } catch (error) {
-    console.error(`Error reading cache for ${channelId}/${monthKey}:`, error)
   }
-  return []
+
+  // Fall back to whatever this process cached in memory when no directory was
+  // writable at all.
+  return memoryCache.get(`${channelId}/${monthKey}`) || []
 }
 
 /**
  * Write messages to cache for a specific channel and month
  */
 export function writeChannelMonthCache(channelId: string, monthKey: string, messages: CachedMessage[]): void {
-  if (!isFileSystemAvailable() || !fs || !path) {
-    const key = `${channelId}/${monthKey}`
-    memoryCache.set(key, messages)
-    return
-  }
+  // Always keep the in-memory copy: it is the fallback whenever no directory
+  // is writable, and readChannelMonthCache falls back to it.
+  const key = `${channelId}/${monthKey}`
+  memoryCache.set(key, messages)
+
+  if (!isFileSystemAvailable() || !fs || !path) return
+
+  const [year, month] = monthKey.split("-")
+  // DATA_DIR is read-only; the runtime cache is the only writable location.
+  const filePath = getRuntimeChannelMonthCachePath(channelId, year, month)
+  if (!filePath || !ensureDirFor(filePath)) return
 
   try {
-    const [year, month] = monthKey.split("-")
-    const filePath = getChannelMonthCachePath(channelId, year, month)
-
-    // Ensure directory exists
-    const dirPath = path.dirname(filePath)
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true })
-    }
-
     // Sort messages by timestamp (newest first)
     const sortedMessages = [...messages].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
@@ -165,7 +214,7 @@ export function writeChannelMonthCache(channelId: string, monthKey: string, mess
     }
 
     fs.writeFileSync(filePath, JSON.stringify(cache, null, 2), "utf-8")
-    console.log(`[v2] Discord cache: wrote ${messages.length} messages to ${monthKey}/messages/discord/${channelId}/messages.json`)
+    console.log(`[v2] Discord cache: wrote ${messages.length} messages to ${filePath}`)
   } catch (error) {
     console.error(`Error writing cache for ${channelId}/${monthKey}:`, error)
   }

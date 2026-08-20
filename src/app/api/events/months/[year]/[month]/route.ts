@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
+import { applyEventMetadataOverlay } from "@/lib/event-metadata-overlay";
 
 export const revalidate = 300;
 
@@ -27,10 +28,16 @@ export async function GET(
 
   try {
     const content = fs.readFileSync(filePath, "utf-8");
-    return new NextResponse(content, {
+    const data = JSON.parse(content);
+
+    // Merge any admin metadata edits, which live outside the read-only DATA_DIR.
+    if (Array.isArray(data?.events)) {
+      data.events = applyEventMetadataOverlay(data.events, year, month);
+    }
+
+    return NextResponse.json(data, {
       status: 200,
       headers: {
-        "Content-Type": "application/json",
         "Cache-Control": "public, max-age=300, s-maxage=300",
       },
     });

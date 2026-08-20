@@ -24,16 +24,31 @@ if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "unknown" ]; then
 fi
 
 # ============================================================
-# Ensure /data directory exists and has correct permissions.
-# The website only READS /data; it is expected to be pre-populated by the
-# separate chb pipeline and is normally mounted read-only.
+# Check /data. The website only READS it; the separate chb pipeline owns the
+# dataset and populates it on the host.
+#
+# Never chown this directory. It is a bind mount, so ownership changes made in
+# the container are written straight through to the host, taking the dataset
+# away from the user that generates it. Mount it read-only (:ro) instead — then
+# the runtime user only needs the files to be world-readable, which is what the
+# pipeline already produces.
 # ============================================================
 DATA_DIR="${DATA_DIR:-/data}"
 if [ -d "$DATA_DIR" ]; then
-    if [ -w "$DATA_DIR" ]; then
-        chown -R nextjs:nodejs "$DATA_DIR" 2>/dev/null || true
+    # `[ -w ]` is useless here: root passes it even on a read-only bind mount.
+    # The only reliable probe is to actually try to create a file.
+    if touch "$DATA_DIR/.write-probe" 2>/dev/null; then
+        rm -f "$DATA_DIR/.write-probe"
+        echo "[data] WARNING: $DATA_DIR is writable — mount it read-only (:ro) so the site cannot modify the dataset"
     else
-        echo "[data] $DATA_DIR is mounted read-only; skipping ownership update"
+        echo "[data] $DATA_DIR is read-only"
+    fi
+
+    if su-exec nextjs test -r "$DATA_DIR"; then
+        echo "[data] $DATA_DIR is readable by nextjs (uid 1001)"
+    else
+        echo "[data] ERROR: $DATA_DIR is NOT readable by nextjs (uid 1001) — check permissions on the host"
+        ls -ld "$DATA_DIR" || true
     fi
 fi
 

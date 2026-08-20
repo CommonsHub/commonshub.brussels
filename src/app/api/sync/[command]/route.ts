@@ -11,6 +11,7 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { DATA_DIR } from "@/lib/data-paths";
+import { ensureDirFor, runtimePath } from "@/lib/runtime-paths";
 
 export const maxDuration = 300;
 
@@ -38,9 +39,10 @@ const VALID_COMMANDS: Record<string, string[][]> = {
 };
 
 function updateSyncState(duration: string) {
-  const stateFile = path.join(DATA_DIR, "sync-state.json");
+  // DATA_DIR is read-only, so sync state lives under RUNTIME_DIR.
+  const stateFile = runtimePath("sync-state.json");
+  if (!ensureDirFor(stateFile)) return;
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(
       stateFile,
       JSON.stringify(

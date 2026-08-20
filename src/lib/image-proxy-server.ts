@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import sharp from "sharp";
-import { DATA_DIR } from "./data-paths";
+import { runtimePath } from "./runtime-paths";
 import { NextResponse } from "next/server";
 import {
   SIZE_CONFIG,
@@ -40,10 +40,11 @@ export function getImageCacheDir(): string | null {
     return resolvedCacheDir;
   }
 
-  const preferredDataDir = path.join(DATA_DIR, "tmp");
+  // DATA_DIR is read-only by design, so the cache lives under RUNTIME_DIR.
+  const preferredDir = runtimePath("image-proxy");
   const candidates = [
     process.env.IMAGE_PROXY_CACHE_DIR,
-    preferredDataDir,
+    preferredDir,
     path.join(os.tmpdir(), "commonshub-image-proxy"),
   ].filter(Boolean) as string[];
 
@@ -61,11 +62,11 @@ export function getImageCacheDir(): string | null {
     resolvedCacheDir = resolvedCandidate;
 
     if (loggedCacheDir !== resolvedCandidate) {
-      if (resolvedCandidate === path.resolve(preferredDataDir)) {
+      if (resolvedCandidate === path.resolve(preferredDir)) {
         console.log(`[resize] Using cache dir: ${resolvedCandidate}`);
       } else {
         console.warn(
-          `[resize] DATA_DIR/tmp is not writable, using fallback cache dir: ${resolvedCandidate}`
+          `[resize] ${preferredDir} is not writable, using fallback cache dir: ${resolvedCandidate}`
         );
       }
       loggedCacheDir = resolvedCandidate;

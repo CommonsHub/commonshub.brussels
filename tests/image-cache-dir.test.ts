@@ -16,12 +16,15 @@ describe("image cache dir fallback", () => {
     jest.unmock("@/lib/data-paths");
   });
 
-  test("falls back to OS tmp when DATA_DIR/tmp is not writable", async () => {
-    const existsSync = jest.fn((target) => target === "/readonly-data/tmp");
+  // The cache lives under RUNTIME_DIR (never DATA_DIR, which is read-only).
+  const PREFERRED_DIR = path.resolve("/tmp/commonshub/image-proxy");
+
+  test("falls back to OS tmp when the preferred cache dir is not writable", async () => {
+    const existsSync = jest.fn((target) => target === PREFERRED_DIR);
     const statSync = jest.fn(() => ({ isDirectory: () => true }));
     const mkdirSync = jest.fn<any>();
     const accessSync = jest.fn((target) => {
-      if (target === "/readonly-data/tmp") {
+      if (target === PREFERRED_DIR) {
         const error = new Error("EROFS");
         (error as NodeJS.ErrnoException).code = "EROFS";
         throw error;
@@ -43,9 +46,6 @@ describe("image cache dir fallback", () => {
       default: {
         tmpdir: () => "/tmp",
       },
-    }));
-    jest.doMock("@/lib/data-paths", () => ({
-      DATA_DIR: "/readonly-data",
     }));
     jest.doMock("sharp", () => ({
       __esModule: true,
@@ -90,9 +90,6 @@ describe("image cache dir fallback", () => {
       default: {
         tmpdir: () => "/tmp",
       },
-    }));
-    jest.doMock("@/lib/data-paths", () => ({
-      DATA_DIR: "/readonly-data",
     }));
     jest.doMock("sharp", () => ({
       __esModule: true,
