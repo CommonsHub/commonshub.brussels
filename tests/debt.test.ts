@@ -6,6 +6,7 @@ import {
   parseDate,
   parseLedger,
   formatEuro,
+  formatDayParts,
 } from "@/lib/debt";
 
 const csv = fs.readFileSync(path.join(__dirname, "fixtures", "debt-tokens.csv"), "utf8");
@@ -102,5 +103,9 @@ describe("showing the figures", () => {
     expect(formatEuro(133121.71)).toBe("€133,121.71");
     expect(formatEuro(-896)).toBe("−€896.00");
     expect(formatEuro(2000, { sign: true })).toBe("+€2,000.00");
+  });
+
+  it("splits a date so a narrow column can stack the year", () => {
+    expect(formatDayParts("2026-04-22")).toEqual({ day: "22 Apr", year: "2026" });
   });
 });
