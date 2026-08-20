@@ -24,16 +24,43 @@ if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "unknown" ]; then
 fi
 
 # ============================================================
-# Ensure /data directory exists and has correct permissions.
-# The website only READS /data; it is expected to be pre-populated by the
-# separate chb pipeline and is normally mounted read-only.
+# Check /data. The website only READS it; the separate chb pipeline owns the
+# dataset and populates it on the host.
+#
+# Never chown this directory. It is a bind mount, so ownership changes made in
+# the container are written straight through to the host, taking the dataset
+# away from the user that generates it. That is exactly what the old `chown -R`
+# here did, and being root is why it worked: root ignores permission bits.
+#
+# What protects the dataset is therefore not the mount flag (Coolify's UI cannot
+# set `:ro` anyway) but ownership — the files belong to the pipeline user and
+# are merely world-readable, so the unprivileged runtime user cannot write them.
+# The checks below report on exactly that, as the runtime user, and never write.
 # ============================================================
 DATA_DIR="${DATA_DIR:-/data}"
 if [ -d "$DATA_DIR" ]; then
-    if [ -w "$DATA_DIR" ]; then
-        chown -R nextjs:nodejs "$DATA_DIR" 2>/dev/null || true
+    # Probe as the user that actually serves the site. Testing as root is
+    # meaningless: root passes `[ -w ]` even on a read-only bind mount.
+    if [ "$(id -u)" = "0" ]; then
+        as_runtime="su-exec nextjs"
     else
-        echo "[data] $DATA_DIR is mounted read-only; skipping ownership update"
+        as_runtime=""
+    fi
+
+    if $as_runtime test -r "$DATA_DIR"; then
+        echo "[data] $DATA_DIR is readable by the runtime user"
+    else
+        echo "[data] ERROR: $DATA_DIR is NOT readable by the runtime user — check permissions on the host"
+        ls -ld "$DATA_DIR" || true
+    fi
+
+    # The only reliable writability test is to actually try to create a file.
+    if $as_runtime touch "$DATA_DIR/.write-probe" 2>/dev/null; then
+        rm -f "$DATA_DIR/.write-probe"
+        echo "[data] WARNING: the runtime user can WRITE to $DATA_DIR."
+        echo "[data]          chown it to the user running the chb pipeline so the site cannot modify the dataset."
+    else
+        echo "[data] $DATA_DIR is not writable by the runtime user"
     fi
 fi
 
@@ -94,6 +121,14 @@ else
 fi
 
 # ============================================================
-# Switch to nextjs user and run the command
+# Drop to the nextjs user and run the command.
+#
+# Only root can do this. When the container is already started as an
+# unprivileged user (docker run --user, or a platform that sets one), su-exec
+# would fail on setgroups — so just exec the command as whoever we are.
 # ============================================================
-exec su-exec nextjs "$@"
+if [ "$(id -u)" = "0" ]; then
+    exec su-exec nextjs "$@"
+fi
+
+exec "$@"

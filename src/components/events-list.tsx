@@ -1,17 +1,7 @@
-"use client";
-
-import { useState } from "react";
 import Image from "@/components/optimized-image";
-import { Calendar, MapPin, ExternalLink, Users, Euro } from "lucide-react";
+import { Calendar, MapPin, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-interface EventMetadata {
-  attendance?: number;
-  fridgeIncome?: number;
-  rentalIncome?: number;
-  note?: string;
-}
 
 interface Event {
   id: string;
@@ -24,12 +14,10 @@ interface Event {
   url?: string;
   coverImage?: string;
   source: "luma" | "ical";
-  metadata: EventMetadata;
 }
 
 interface EventsListProps {
   events: Event[];
-  isAdmin: boolean;
 }
 
 function formatDate(dateString: string): string {
@@ -49,165 +37,9 @@ function formatTime(dateString: string): string {
   });
 }
 
-interface InlineNumberEditorProps {
-  value?: number;
-  onSave: (value: number | undefined) => Promise<void>;
-  placeholder?: string;
-  prefix?: string;
-}
 
-function InlineNumberEditor({ value, onSave, placeholder, prefix }: InlineNumberEditorProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value?.toString() || "");
-  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = async () => {
-    if (editValue === (value?.toString() || "")) {
-      setIsEditing(false);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const numValue = editValue.trim() === "" ? undefined : parseFloat(editValue);
-      await onSave(numValue);
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error saving:", error);
-      alert("Failed to save");
-      setEditValue(value?.toString() || "");
-      setIsEditing(false);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSave();
-    } else if (e.key === "Escape") {
-      setEditValue(value?.toString() || "");
-      setIsEditing(false);
-    }
-  };
-
-  if (!isEditing) {
-    return (
-      <button
-        onClick={() => {
-          setEditValue(value?.toString() || "");
-          setIsEditing(true);
-        }}
-        className="text-sm hover:bg-muted/50 px-2 py-1 rounded transition-colors"
-        disabled={isSaving}
-      >
-        {value !== undefined ? `${prefix || ""}${value}` : placeholder || "—"}
-      </button>
-    );
-  }
-
-  return (
-    <input
-      type="number"
-      value={editValue}
-      onChange={(e) => setEditValue(e.target.value)}
-      onKeyDown={handleKeyDown}
-      onBlur={handleSave}
-      disabled={isSaving}
-      placeholder={placeholder}
-      className="text-sm border rounded px-2 py-1 w-20 outline-none focus:ring-2 focus:ring-primary"
-      autoFocus
-    />
-  );
-}
-
-interface InlineTextEditorProps {
-  value?: string;
-  onSave: (value: string | undefined) => Promise<void>;
-  placeholder?: string;
-}
-
-function InlineTextEditor({ value, onSave, placeholder }: InlineTextEditorProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value || "");
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (editValue === (value || "")) {
-      setIsEditing(false);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const trimmedValue = editValue.trim();
-      await onSave(trimmedValue === "" ? undefined : trimmedValue);
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error saving:", error);
-      alert("Failed to save");
-      setEditValue(value || "");
-      setIsEditing(false);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSave();
-    } else if (e.key === "Escape") {
-      setEditValue(value || "");
-      setIsEditing(false);
-    }
-  };
-
-  if (!isEditing) {
-    return (
-      <button
-        onClick={() => {
-          setEditValue(value || "");
-          setIsEditing(true);
-        }}
-        className="text-sm text-muted-foreground hover:bg-muted/50 px-2 py-1 rounded transition-colors italic"
-        disabled={isSaving}
-      >
-        {value || placeholder || "add note"}
-      </button>
-    );
-  }
-
-  return (
-    <input
-      type="text"
-      value={editValue}
-      onChange={(e) => setEditValue(e.target.value)}
-      onKeyDown={handleKeyDown}
-      onBlur={handleSave}
-      disabled={isSaving}
-      placeholder={placeholder}
-      className="text-sm border rounded px-2 py-1 w-full outline-none focus:ring-2 focus:ring-primary"
-      autoFocus
-    />
-  );
-}
-
-export function EventsList({ events, isAdmin }: EventsListProps) {
-  const updateEventMetadata = async (eventId: string, updates: Partial<EventMetadata>) => {
-    const response = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to update event metadata");
-    }
-
-    // Reload the page to show updated data
-    window.location.reload();
-  };
-
+export function EventsList({ events }: EventsListProps) {
   return (
     <div className="space-y-4">
       {events.map((event) => {
@@ -291,53 +123,6 @@ export function EventsList({ events, isAdmin }: EventsListProps) {
                   </div>
                 </div>
 
-                {/* Metadata Section (Admin Only) */}
-                {isAdmin && (
-                  <div className="pt-4 border-t space-y-2">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Attendance:</span>
-                        <InlineNumberEditor
-                          value={event.metadata.attendance}
-                          onSave={(value) => updateEventMetadata(event.id, { attendance: value })}
-                          placeholder="0"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Euro className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Fridge:</span>
-                        <InlineNumberEditor
-                          value={event.metadata.fridgeIncome}
-                          onSave={(value) => updateEventMetadata(event.id, { fridgeIncome: value })}
-                          placeholder="0"
-                          prefix="€"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Euro className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Rental:</span>
-                        <InlineNumberEditor
-                          value={event.metadata.rentalIncome}
-                          onSave={(value) => updateEventMetadata(event.id, { rentalIncome: value })}
-                          placeholder="0"
-                          prefix="€"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2 col-span-full">
-                        <span className="text-muted-foreground">Note:</span>
-                        <InlineTextEditor
-                          value={event.metadata.note}
-                          onSave={(value) => updateEventMetadata(event.id, { note: value })}
-                          placeholder="add note"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </Card>

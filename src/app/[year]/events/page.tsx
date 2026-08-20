@@ -2,25 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
-
-interface EventMetadata {
-  host?: string;
-  attendance?: number;
-  ticketRevenue?: number;
-  fridgeIncome?: number;
-  rentalIncome?: number;
-  ticketsSold?: number;
-  note?: string;
-}
 
 interface Event {
   id: string;
   name: string;
   startAt: string;
   endAt?: string;
-  metadata: EventMetadata;
   source: string;
 }
 
@@ -32,21 +20,12 @@ interface MonthEvents {
 export default function YearEventsPage() {
   const params = useParams();
   const year = params.year as string;
-  const { data: session } = useSession();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingEvents, setSavingEvents] = useState<Set<string>>(new Set());
-  const [saveTimeouts, setSaveTimeouts] = useState<Map<string, NodeJS.Timeout>>(new Map());
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [filterText, setFilterText] = useState("");
   const [showFilter, setShowFilter] = useState(false);
   const searchParams = useSearchParams();
   const router = useRouter();
-
-  // Check if user is admin
-  const isAdmin = session?.user?.roleDetails?.some(
-    role => role.name.toLowerCase() === "admin" || role.name.toLowerCase() === "administrator"
-  ) ?? false;
 
   // Filter events based on name
   const filteredEvents = events.filter(event =>
@@ -112,112 +91,12 @@ export default function YearEventsPage() {
     router.push(`?${params.toString()}`, { scroll: false });
   }
 
-  async function saveEvent(eventId: string, eventData: Event) {
-    try {
-      // Mark as saving
-      setSavingEvents(prev => new Set(prev).add(eventId));
-
-      // Get year and month from event start date
-      const date = new Date(eventData.startAt);
-      const y = date.getFullYear().toString();
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-
-      // Save only this event
-      await fetch("/api/events/metadata", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          year: y,
-          month: m,
-          events: [{
-            id: eventData.id,
-            metadata: eventData.metadata
-          }]
-        })
-      });
-
-      setLastSaved(new Date());
-    } catch (error) {
-      console.error("Error saving event:", error);
-    } finally {
-      // Remove from saving set
-      setSavingEvents(prev => {
-        const next = new Set(prev);
-        next.delete(eventId);
-        return next;
-      });
-    }
-  }
-
-  function updateEventMetadata(eventId: string, field: keyof EventMetadata, value: any) {
-    // Format decimal values to 2 places
-    if (field === "ticketRevenue" || field === "fridgeIncome" || field === "rentalIncome") {
-      if (value !== "" && value !== undefined) {
-        value = Math.round(parseFloat(value) * 100) / 100;
-      }
-    }
-
-    // Create the updated event
-    let updatedEvent: Event | undefined;
-
-    setEvents(prevEvents => prevEvents.map(event => {
-      if (event.id === eventId) {
-        updatedEvent = {
-          ...event,
-          metadata: {
-            ...event.metadata,
-            [field]: value === "" ? undefined : value
-          }
-        };
-        return updatedEvent;
-      }
-      return event;
-    }));
-
-    // Clear existing timeout for this event
-    const existingTimeout = saveTimeouts.get(eventId);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
-
-    // Trigger autosave after 1 second of no changes for this event
-    const timeout = setTimeout(() => {
-      if (updatedEvent) {
-        saveEvent(eventId, updatedEvent);
-      }
-      // Clean up timeout from map
-      setSaveTimeouts(prev => {
-        const next = new Map(prev);
-        next.delete(eventId);
-        return next;
-      });
-    }, 1000);
-
-    setSaveTimeouts(prev => new Map(prev).set(eventId, timeout));
-  }
-
   function downloadCSV() {
-    const headers = [
-      "Date",
-      "Event Name",
-      "Host",
-      "Attendance",
-      "Tickets Income (EUR)",
-      "Fridge (EUR)",
-      "Rental (EUR)"
-    ];
+    const headers = ["Date", "Event Name"];
 
     const rows = filteredEvents.map(event => {
       const date = new Date(event.startAt).toLocaleDateString("en-GB");
-      return [
-        date,
-        event.name,
-        event.metadata.host || "",
-        event.metadata.attendance || "",
-        event.metadata.ticketRevenue || "",
-        event.metadata.fridgeIncome || "",
-        event.metadata.rentalIncome || ""
-      ];
+      return [date, event.name];
     });
 
     const csvContent = [
@@ -249,15 +128,6 @@ export default function YearEventsPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">Events {year}</h1>
-          <div className="text-sm text-gray-500 mt-1">
-            {savingEvents.size > 0 ? (
-              <span className="text-blue-600">Saving changes...</span>
-            ) : lastSaved ? (
-              <span>Last saved: {lastSaved.toLocaleTimeString()}</span>
-            ) : (
-              <span>Changes autosave after 1 second</span>
-            )}
-          </div>
         </div>
         <button
           onClick={downloadCSV}
@@ -300,11 +170,6 @@ export default function YearEventsPage() {
                   />
                 )}
               </th>
-              <th className="px-4 py-2 border-b text-left">Host</th>
-              <th className="px-4 py-2 border-b text-right">Attendance</th>
-              <th className="px-4 py-2 border-b text-right">Tickets (EUR)</th>
-              <th className="px-4 py-2 border-b text-right">Fridge (EUR)</th>
-              <th className="px-4 py-2 border-b text-right">Rental (EUR)</th>
             </tr>
           </thead>
           <tbody>
@@ -329,110 +194,10 @@ export default function YearEventsPage() {
                       {event.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-2 border-b">
-                    {isAdmin ? (
-                      <input
-                        type="text"
-                        value={event.metadata.host || ""}
-                        onChange={(e) => updateEventMetadata(event.id, "host", e.target.value)}
-                        className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Host name"
-                      />
-                    ) : (
-                      <span>{event.metadata.host || "-"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 border-b text-right">
-                    {isAdmin ? (
-                      <input
-                        type="number"
-                        value={event.metadata.attendance ?? ""}
-                        onChange={(e) => updateEventMetadata(event.id, "attendance", e.target.value ? parseInt(e.target.value) : undefined)}
-                        className="w-20 px-2 py-1 border rounded text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
-                      />
-                    ) : (
-                      <span>{event.metadata.attendance ?? "-"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 border-b text-right">
-                    {isAdmin ? (
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={event.metadata.ticketRevenue !== undefined ? event.metadata.ticketRevenue.toFixed(2) : ""}
-                        onChange={(e) => updateEventMetadata(event.id, "ticketRevenue", e.target.value ? parseFloat(e.target.value) : undefined)}
-                        onBlur={(e) => {
-                          if (e.target.value && event.metadata.ticketRevenue !== undefined) {
-                            e.target.value = event.metadata.ticketRevenue.toFixed(2);
-                          }
-                        }}
-                        className="w-24 px-2 py-1 border rounded text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    ) : (
-                      <span>{event.metadata.ticketRevenue !== undefined ? event.metadata.ticketRevenue.toFixed(2) : "-"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 border-b text-right">
-                    {isAdmin ? (
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={event.metadata.fridgeIncome !== undefined ? event.metadata.fridgeIncome.toFixed(2) : ""}
-                        onChange={(e) => updateEventMetadata(event.id, "fridgeIncome", e.target.value ? parseFloat(e.target.value) : undefined)}
-                        onBlur={(e) => {
-                          if (e.target.value && event.metadata.fridgeIncome !== undefined) {
-                            e.target.value = event.metadata.fridgeIncome.toFixed(2);
-                          }
-                        }}
-                        className="w-24 px-2 py-1 border rounded text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    ) : (
-                      <span>{event.metadata.fridgeIncome !== undefined ? event.metadata.fridgeIncome.toFixed(2) : "-"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 border-b text-right">
-                    {isAdmin ? (
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={event.metadata.rentalIncome !== undefined ? event.metadata.rentalIncome.toFixed(2) : ""}
-                        onChange={(e) => updateEventMetadata(event.id, "rentalIncome", e.target.value ? parseFloat(e.target.value) : undefined)}
-                        onBlur={(e) => {
-                          if (e.target.value && event.metadata.rentalIncome !== undefined) {
-                            e.target.value = event.metadata.rentalIncome.toFixed(2);
-                          }
-                        }}
-                        className="w-24 px-2 py-1 border rounded text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    ) : (
-                      <span>{event.metadata.rentalIncome !== undefined ? event.metadata.rentalIncome.toFixed(2) : "-"}</span>
-                    )}
-                  </td>
                 </tr>
               );
             })}
           </tbody>
-          <tfoot>
-            <tr className="bg-gray-100 font-bold">
-              <td className="px-4 py-2 border-t" colSpan={3}>Total</td>
-              <td className="px-4 py-2 border-t text-right">
-                {filteredEvents.reduce((sum, e) => sum + (e.metadata.attendance || 0), 0)}
-              </td>
-              <td className="px-4 py-2 border-t text-right">
-                {filteredEvents.reduce((sum, e) => sum + (e.metadata.ticketRevenue || 0), 0).toFixed(2)}
-              </td>
-              <td className="px-4 py-2 border-t text-right">
-                {filteredEvents.reduce((sum, e) => sum + (e.metadata.fridgeIncome || 0), 0).toFixed(2)}
-              </td>
-              <td className="px-4 py-2 border-t text-right">
-                {filteredEvents.reduce((sum, e) => sum + (e.metadata.rentalIncome || 0), 0).toFixed(2)}
-              </td>
-            </tr>
-          </tfoot>
         </table>
       </div>
 
