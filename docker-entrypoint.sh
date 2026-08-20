@@ -44,10 +44,19 @@ if [ -d "$DATA_DIR" ]; then
         echo "[data] $DATA_DIR is read-only"
     fi
 
-    if su-exec nextjs test -r "$DATA_DIR"; then
-        echo "[data] $DATA_DIR is readable by nextjs (uid 1001)"
+    # Check readability as the user that will actually serve the site.
+    # su-exec needs root, so fall back to a direct test when we are already
+    # running unprivileged.
+    if [ "$(id -u)" = "0" ]; then
+        readable_as_nextjs="su-exec nextjs test -r"
     else
-        echo "[data] ERROR: $DATA_DIR is NOT readable by nextjs (uid 1001) — check permissions on the host"
+        readable_as_nextjs="test -r"
+    fi
+
+    if $readable_as_nextjs "$DATA_DIR"; then
+        echo "[data] $DATA_DIR is readable by the runtime user"
+    else
+        echo "[data] ERROR: $DATA_DIR is NOT readable by the runtime user — check permissions on the host"
         ls -ld "$DATA_DIR" || true
     fi
 fi
@@ -109,6 +118,14 @@ else
 fi
 
 # ============================================================
-# Switch to nextjs user and run the command
+# Drop to the nextjs user and run the command.
+#
+# Only root can do this. When the container is already started as an
+# unprivileged user (docker run --user, or a platform that sets one), su-exec
+# would fail on setgroups — so just exec the command as whoever we are.
 # ============================================================
-exec su-exec nextjs "$@"
+if [ "$(id -u)" = "0" ]; then
+    exec su-exec nextjs "$@"
+fi
+
+exec "$@"
