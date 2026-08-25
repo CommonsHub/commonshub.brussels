@@ -6,6 +6,7 @@
 import { Resend } from "resend"
 import settings from "@/settings/settings.json"
 import { createThread, sendMessage, isDiscordConfigured } from "@/lib/discord"
+import { formatAddress, fromSite, fromSubmitter } from "@/lib/email-address"
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
@@ -16,6 +17,8 @@ export interface EmailOptions {
   html: string
   cc?: string[]
   replyTo?: string
+  /** Defaults to the hub's own name; forms send as "Name via commonshub.brussels". */
+  from?: string
 }
 
 export interface DiscordThreadOptions {
@@ -29,7 +32,7 @@ export interface DiscordThreadOptions {
  * If RESEND_API_KEY is not set, logs a warning instead
  */
 export async function sendEmail(options: EmailOptions) {
-  const { to, subject, html, cc, replyTo } = options
+  const { to, subject, html, cc, replyTo, from = fromSite() } = options
 
   if (!resend) {
     console.warn(`⚠️  Email not sent (RESEND_API_KEY not set): ${subject}`);
@@ -42,7 +45,7 @@ export async function sendEmail(options: EmailOptions) {
   }
 
   return resend.emails.send({
-    from: `Commons Hub <${settings.email.from}>`,
+    from,
     to,
     subject,
     html,
@@ -87,7 +90,7 @@ export async function sendBookingConfirmation(data: {
   details: string
 }) {
   return sendEmail({
-    to: data.email,
+    to: formatAddress(data.name, data.email),
     subject: `Booking Request Received - Commons Hub`,
     html: `
       <h1>Thank you for your booking request, ${data.name}!</h1>
@@ -109,12 +112,15 @@ export async function sendRequestNotification(data: {
   html: string
   /** Email of the person who submitted the form, so a reply reaches them */
   replyTo?: string
+  /** Their name, so the hub inbox shows who wrote rather than the site */
+  fromName?: string
 }) {
   return sendEmail({
     to: settings.email.to,
     subject: data.subject,
     html: data.html,
-    replyTo: data.replyTo,
+    from: fromSubmitter(data.fromName),
+    replyTo: data.replyTo ? formatAddress(data.fromName, data.replyTo) : undefined,
   })
 }
 
