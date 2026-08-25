@@ -2,6 +2,7 @@ import { Resend } from "resend"
 import { NextResponse } from "next/server"
 import { createDiscordThread } from "@/lib/discord"
 import settings from "@/settings/settings.json"
+import { formatAddress, fromSite, fromSubmitter } from "@/lib/email-address"
 
 export async function POST(request: Request) {
   try {
@@ -17,9 +18,9 @@ export async function POST(request: Request) {
 
     // Send notification to Commons Hub
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
+      from: fromSubmitter(name),
       to: ["hello@commonshub.brussels"],
-      replyTo: email,
+      replyTo: formatAddress(name, email),
       subject: `Workshop Booking Request: ${workshop}`,
       html: `
         <h2>New Workshop Booking Request</h2>
@@ -36,8 +37,8 @@ export async function POST(request: Request) {
     })
 
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
-      to: [email],
+      from: fromSite(),
+      to: [formatAddress(name, email)],
       cc: ["hello@commonshub.brussels"],
       subject: `Workshop Booking Request Received - ${workshop}`,
       html: `

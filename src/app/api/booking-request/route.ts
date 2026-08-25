@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { NextResponse } from "next/server";
 import { createDiscordThread } from "@/lib/discord";
 import settings from "@/settings/settings.json";
+import { formatAddress, fromSite, fromSubmitter } from "@/lib/email-address";
 
 const roomNames: Record<string, string> = {
   mush: "Mush Room",
@@ -55,9 +56,9 @@ export async function POST(request: Request) {
 
     // Email to Commons Hub
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
+      from: fromSubmitter(name),
       to: ["hello@commonshub.brussels"],
-      replyTo: email,
+      replyTo: formatAddress(name, email),
       subject: `${isPrivate ? "[PRIVATE] " : ""}New Booking Request: ${roomName} - ${name}`,
       html: `
         <h2>New Booking Request</h2>
@@ -102,8 +103,8 @@ export async function POST(request: Request) {
 
     // Confirmation email to the requester
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
-      to: [email],
+      from: fromSite(),
+      to: [formatAddress(name, email)],
       subject: `Booking Request Received - ${roomName}`,
       html: `
         <h2>Thank you for your booking request!</h2>

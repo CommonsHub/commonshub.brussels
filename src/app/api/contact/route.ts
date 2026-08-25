@@ -2,6 +2,7 @@ import { Resend } from "resend"
 import { NextResponse } from "next/server"
 import { createDiscordThread } from "@/lib/discord"
 import settings from "@/settings/settings.json"
+import { formatAddress, fromSite, fromSubmitter } from "@/lib/email-address"
 
 const reasonLabels: Record<string, string> = {
   "booking-room": "Booking a room",
@@ -37,10 +38,10 @@ export async function POST(request: Request) {
 
     // Email to Commons Hub
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
+      from: fromSubmitter(name),
       to: ["hello@commonshub.brussels"],
-      cc: [email],
-      replyTo: email,
+      cc: [formatAddress(name, email)],
+      replyTo: formatAddress(name, email),
       subject: `New Contact Form: ${reasonLabel} - ${name}`,
       html: `
         <h2>New Contact Form Submission</h2>
@@ -60,8 +61,8 @@ export async function POST(request: Request) {
 
     // Confirmation email to the sender
     await resend.emails.send({
-      from: "Commons Hub Brussels <hello@commonshub.brussels>",
-      to: [email],
+      from: fromSite(),
+      to: [formatAddress(name, email)],
       subject: `We received your message - Commons Hub Brussels`,
       html: `
         <h2>Thank you for reaching out!</h2>
