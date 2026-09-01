@@ -28,7 +28,12 @@ export interface MemberPayment {
 
 export interface Member {
   id: string; // Stripe subscription ID (truncated) or Odoo order ID
-  source?: "stripe" | "odoo"; // Payment provider
+  /**
+   * Where the membership comes from. "funders" is a membership paid outside
+   * both systems — a bank transfer, a grant, one someone gifted — listed by
+   * hand in chb's settings/funders.json and covered until its expiry date.
+   */
+  source?: "stripe" | "odoo" | "funders";
   accounts: MemberAccounts;
   firstName: string;
   plan: "monthly" | "yearly";
@@ -73,7 +78,7 @@ export interface MembersFile {
 /** One month of one member's standing, from their history file. */
 export interface MemberHistoryMonth {
   month: string; // YYYY-MM
-  source?: "stripe" | "odoo";
+  source?: "stripe" | "odoo" | "funders";
   status: Member["status"];
   plan?: "monthly" | "yearly";
   amount: Amount;
