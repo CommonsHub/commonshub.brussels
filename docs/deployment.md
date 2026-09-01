@@ -102,9 +102,26 @@ NEXTAUTH_URL=https://your-domain.example
 NEXTAUTH_SECRET=...
 RESEND_API_KEY=...
 WEBHOOK_SECRET=...
+EMAIL_HASH_SALT=...
 ```
 
 `DATA_DIR` is optional and defaults to `/data`.
+
+`EMAIL_HASH_SALT` turns on the membership surface. A member's id is
+`sha256(lowercase(trim(email)) + EMAIL_HASH_SALT)`, minted by the chb pipeline
+and used to name each member's history file; the website recomputes it from the
+signed-in user's email to recognise them. It must be **byte-identical** to the
+salt chb syncs with — copy it from chb's `config.env` on the pipeline host,
+where it is deliberately excluded from the data sync so it never travels
+automatically.
+
+Without it, this host cannot identify anyone: `/api/members` and
+`/api/members/me` both return 404 and no member data is served. That is the
+intended failure mode — a wrong or missing salt should show nothing rather than
+mismatch people.
+
+Never rotate it. A new salt re-identifies the entire membership: every id
+changes, every history splits in two, and nothing links the halves.
 
 ### 3. Deploy
 

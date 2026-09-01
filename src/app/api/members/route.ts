@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { MembersFile } from "@/types/members";
 import { DATA_DIR } from "@/lib/data-paths";
+import { membershipEnabled } from "@/lib/membership";
 
 function findLatestMembersPath(): string | null {
   try {
@@ -47,6 +48,16 @@ function findLatestMembersPath(): string | null {
 }
 
 export async function GET(request: Request) {
+  // A host without EMAIL_HASH_SALT cannot identify a member, so it does not
+  // serve member data at all rather than serving a roster it cannot connect
+  // anyone to. See @/lib/membership.
+  if (!membershipEnabled()) {
+    return NextResponse.json(
+      { error: "Membership is not configured on this host." },
+      { status: 404 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const year = searchParams.get("year");
   const month = searchParams.get("month");
