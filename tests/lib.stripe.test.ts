@@ -3,7 +3,7 @@
  * Tests the Stripe helper functions for fetching balance and transactions
  */
 
-import { describe, test, expect, jest, beforeEach, afterAll } from "@jest/globals";
+import { describe, test, expect, jest, beforeEach, afterEach, afterAll } from "@jest/globals";
 import {
   fetchStripeBalance,
   fetchCurrentMonthTransactions,
@@ -17,12 +17,25 @@ describe("Stripe API", () => {
   const originalFetch = global.fetch;
   const originalEnv = process.env;
 
+  // fetchCurrentMonthTransactions answers "this month" from the wall clock, so
+  // any test that builds a timestamp relative to now has to pin the clock —
+  // otherwise "1 day ago" lands in the previous month on the 1st, and the
+  // suite fails one day in thirty. Mid-month leaves room either side for
+  // relative offsets to stay inside the month.
+  const MID_MONTH = new Date("2026-03-15T12:00:00Z");
+
   beforeEach(() => {
     jest.resetModules();
     process.env = {
       ...originalEnv,
       STRIPE_SECRET_KEY: "sk_test_1234567890",
     };
+  });
+
+  afterEach(() => {
+    // Unconditional: a test that throws before its own cleanup would otherwise
+    // leave every later test running on a frozen clock.
+    jest.useRealTimers();
   });
 
   afterAll(() => {
@@ -71,8 +84,9 @@ describe("Stripe API", () => {
 
   describe("fetchCurrentMonthTransactions", () => {
     test("fetches current month transactions successfully", async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(MID_MONTH);
       const now = Math.floor(Date.now() / 1000);
-      const currentMonth = getMonthKeyFromDate(new Date());
 
       const mockTransactions = {
         data: [
@@ -110,6 +124,8 @@ describe("Stripe API", () => {
     });
 
     test("filters out transactions from previous months", async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(MID_MONTH);
       const now = Math.floor(Date.now() / 1000);
       const lastMonth = now - 35 * 86400; // 35 days ago (previous month)
 
@@ -216,8 +232,6 @@ describe("Stripe API", () => {
       global.fetch = mockFetch as any;
 
       const result = await fetchCurrentMonthTransactions("sk_test_1234567890");
-
-      jest.useRealTimers();
 
       expect(result).toHaveLength(115); // 100 from first page + 15 from second (matching real Nov 2025 data)
       expect(mockFetch).toHaveBeenCalledTimes(2);
