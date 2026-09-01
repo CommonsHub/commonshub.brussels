@@ -18,6 +18,9 @@
  * When EMAIL_HASH_SALT is absent this host cannot identify anybody, and the
  * whole membership surface stays off rather than degrading to something
  * half-working. See `membershipEnabled`.
+ *
+ * Member data is read only from chb's `restricted/` tree. Its `private/` tree
+ * is never served under any condition — see `memberHistoryPath`.
  */
 
 import { createHash } from "crypto";
@@ -28,6 +31,20 @@ import type { MemberHistory } from "@/types/members";
 
 /** A membership id is a bare sha256 digest — 64 lowercase hex characters. */
 const MEMBER_ID_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * chb writes two kinds of non-public output, and they are not the same
+ * promise:
+ *
+ *   - `private/`    — served to nobody, ever. Operator-only material.
+ *   - `restricted/` — served, but only to the person it describes, and only
+ *                     once they have proved who they are.
+ *
+ * Member histories live in `restricted/`. `private/` is never read by this
+ * application; `assertNotPrivate` below makes that a property of the code
+ * rather than a habit.
+ */
+const RESTRICTED_MEMBERS_DIR = ["latest", "generated", "restricted", "members"];
 
 /**
  * The configured salt, or null when this host has none. Read on every call
@@ -66,12 +83,26 @@ export function memberIdForEmail(email: string | null | undefined): string | nul
  * well-formed digest. The id reaches this function from a hash we computed
  * ourselves, but it is validated regardless: it becomes a filename, and a
  * value that is never trusted cannot be used to walk out of the directory.
+ *
+ * The result is additionally refused if it lands anywhere under `private/`.
  */
 export function memberHistoryPath(memberId: string): string | null {
   const id = (memberId || "").trim().toLowerCase();
   if (!MEMBER_ID_PATTERN.test(id)) return null;
 
-  return path.join(DATA_DIR, "latest", "generated", "private", "members", `${id}.json`);
+  const file = path.join(DATA_DIR, ...RESTRICTED_MEMBERS_DIR, `${id}.json`);
+  return assertNotPrivate(file);
+}
+
+/**
+ * Returns the path unless it lies under a `private/` segment, in which case
+ * null. Nothing this application serves may come from private/, so the rule is
+ * enforced at the only point that turns an id into a file to read — a
+ * mistyped constant or a future caller cannot quietly opt out of it.
+ */
+function assertNotPrivate(file: string): string | null {
+  const segments = path.resolve(file).split(path.sep);
+  return segments.includes("private") ? null : file;
 }
 
 /**

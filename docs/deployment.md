@@ -123,6 +123,13 @@ mismatch people.
 Never rotate it. A new salt re-identifies the entire membership: every id
 changes, every history splits in two, and nothing links the halves.
 
+Member data is read from chb's `restricted/` tree
+(`latest/generated/restricted/members/`), which exists to be served to the
+member it describes once they have signed in. chb's `private/` tree is
+operator-only and is never served under any condition — the code refuses any
+path that lands there, so it cannot be exposed by a mistyped constant or a
+future caller.
+
 ### 3. Deploy
 
 Deploy the application from Coolify. To publish fresh data, trigger a

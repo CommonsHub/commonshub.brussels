@@ -25,7 +25,7 @@ function loadMembership(dataDir: string, salt: string | undefined) {
 }
 
 function writeHistory(dataDir: string, memberId: string, body: object) {
-  const dir = path.join(dataDir, "latest", "generated", "private", "members");
+  const dir = path.join(dataDir, "latest", "generated", "restricted", "members");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `${memberId}.json`), JSON.stringify(body));
 }
@@ -114,14 +114,41 @@ describe("membership identity", () => {
     }
   });
 
-  it("resolves a valid id inside the members directory", () => {
+  it("resolves a valid id inside the restricted members directory", () => {
     const { memberHistoryPath } = loadMembership(dataDir, SALT);
     const id = "b".repeat(64);
     const file = memberHistoryPath(id)!;
     expect(path.dirname(file)).toBe(
-      path.join(dataDir, "latest", "generated", "private", "members")
+      path.join(dataDir, "latest", "generated", "restricted", "members")
     );
     expect(path.basename(file)).toBe(`${id}.json`);
+  });
+
+  it("never reads from the private tree", () => {
+    const { memberHistoryPath, readMemberHistory } = loadMembership(dataDir, SALT);
+    const id = "b".repeat(64);
+
+    // Nothing this app serves may come from private/. Prove the resolved path
+    // does not go there, and that a private copy of the same id is not read.
+    expect(memberHistoryPath(id)).not.toContain(`${path.sep}private${path.sep}`);
+
+    const privateDir = path.join(dataDir, "latest", "generated", "private", "members");
+    fs.mkdirSync(privateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(privateDir, `${id}.json`),
+      JSON.stringify({ schemaVersion: 1, memberId: id, monthsActive: 99, months: [] })
+    );
+
+    expect(readMemberHistory(id)).toBeNull();
+  });
+
+  it("refuses a path that would land under private, whatever DATA_DIR says", () => {
+    // A DATA_DIR that itself contains a private segment must not smuggle
+    // member reads into the never-served tree.
+    const sneaky = path.join(dataDir, "private");
+    fs.mkdirSync(sneaky, { recursive: true });
+    const { memberHistoryPath } = loadMembership(sneaky, SALT);
+    expect(memberHistoryPath("b".repeat(64))).toBeNull();
   });
 
   it("picks up a salt change without a rebuild, so a restart is enough", () => {
