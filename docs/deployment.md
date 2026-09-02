@@ -102,9 +102,46 @@ NEXTAUTH_URL=https://your-domain.example
 NEXTAUTH_SECRET=...
 RESEND_API_KEY=...
 WEBHOOK_SECRET=...
+EMAIL_HASH_SALT=...
+MEMBER_LINK_SECRET=...
+MEMBERSHIP_STEWARD_EMAIL=hello@commonshub.brussels
 ```
 
 `DATA_DIR` is optional and defaults to `/data`.
+
+`EMAIL_HASH_SALT` turns on the membership surface. A member's id is
+`sha256(lowercase(trim(email)) + EMAIL_HASH_SALT)`, minted by the chb pipeline
+and used to name each member's history file; the website recomputes it from the
+signed-in user's email to recognise them. It must be **byte-identical** to the
+salt chb syncs with — copy it from chb's `config.env` on the pipeline host,
+where it is deliberately excluded from the data sync so it never travels
+automatically.
+
+Without it, this host cannot identify anyone: `/api/members` and
+`/api/members/me` both return 404 and no member data is served. That is the
+intended failure mode — a wrong or missing salt should show nothing rather than
+mismatch people.
+
+Never rotate it. A new salt re-identifies the entire membership: every id
+changes, every history splits in two, and nothing links the halves.
+
+`MEMBER_LINK_SECRET` enables self-service linking, for members who pay with one
+address and sign in with another. It signs the verification codes mailed to a
+claimed address; the codes are stateless, so nothing is stored and rotating this
+secret only invalidates codes currently in flight — unlike `EMAIL_HASH_SALT`,
+which must never be rotated. Without it the linking flow is off and the rest of
+the membership surface still works.
+
+`MEMBERSHIP_STEWARD_EMAIL` is where a verified link is sent for someone to apply
+to chb's `settings/member-links.json`; it defaults to `hello@commonshub.brussels`.
+Automating that last hop is issue #35.
+
+Member data is read from chb's `restricted/` tree
+(`latest/generated/restricted/members/`), which exists to be served to the
+member it describes once they have signed in. chb's `private/` tree is
+operator-only and is never served under any condition — the code refuses any
+path that lands there, so it cannot be exposed by a mistyped constant or a
+future caller.
 
 ### 3. Deploy
 

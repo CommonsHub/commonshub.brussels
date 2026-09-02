@@ -28,7 +28,12 @@ export interface MemberPayment {
 
 export interface Member {
   id: string; // Stripe subscription ID (truncated) or Odoo order ID
-  source?: "stripe" | "odoo"; // Payment provider
+  /**
+   * Where the membership comes from. "funders" is a membership paid outside
+   * both systems — a bank transfer, a grant, one someone gifted — listed by
+   * hand in chb's settings/funders.json and covered until its expiry date.
+   */
+  source?: "stripe" | "odoo" | "funders";
   accounts: MemberAccounts;
   firstName: string;
   plan: "monthly" | "yearly";
@@ -58,4 +63,51 @@ export interface MembersFile {
   generatedAt: string;
   summary: MembersSummary;
   members: Member[];
+  /**
+   * Set when this month's Odoo membership was reconstructed from a later
+   * snapshot rather than captured while the month was current. Odoo's API
+   * returns live state, not history, so a subscription cancelled before that
+   * snapshot is missing entirely: a derived month can undercount, never
+   * overcount. Present so a reader is never shown a reconstruction as if it
+   * were an observation.
+   */
+  odooDerived?: boolean;
+  odooDerivedFrom?: string;
+}
+
+/** One month of one member's standing, from their history file. */
+export interface MemberHistoryMonth {
+  month: string; // YYYY-MM
+  source?: "stripe" | "odoo" | "funders";
+  status: Member["status"];
+  plan?: "monthly" | "yearly";
+  amount: Amount;
+  interval?: "month" | "year";
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  latestPayment?: MemberPayment | null;
+  isOrganization?: boolean;
+  /** This month was reconstructed rather than observed — see MembersFile. */
+  derived?: boolean;
+  derivedFrom?: string;
+}
+
+/**
+ * One member's month-by-month history, as written by chb to
+ * data/latest/generated/private/members/<memberId>.json.
+ *
+ * A month the member does not appear in is a month they were not a member, so
+ * gaps in `months` are meaningful rather than missing data.
+ */
+export interface MemberHistory {
+  schemaVersion: number;
+  memberId: string; // the emailHash
+  firstName?: string;
+  discord?: string;
+  createdAt?: string;
+  firstMonth?: string;
+  lastMonth?: string;
+  monthsActive: number;
+  generatedAt: string;
+  months: MemberHistoryMonth[];
 }
