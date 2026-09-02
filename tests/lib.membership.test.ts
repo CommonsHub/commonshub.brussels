@@ -157,3 +157,81 @@ describe("membership identity", () => {
     expect(second).not.toBe(first);
   });
 });
+
+describe("identifier resolution", () => {
+  let dataDir: string;
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "membership-idx-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    process.env = { ...originalEnv };
+  });
+
+  function writeIndex(identifiers: Record<string, string>) {
+    const dir = path.join(dataDir, "latest", "generated", "restricted");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "members-index.json"),
+      JSON.stringify({ schemaVersion: 1, identifiers })
+    );
+  }
+
+  // The whole point of the identity layer: a member found by the account they
+  // sign in with, not by the address they happen to pay with.
+  it("resolves a member from a Discord identifier", () => {
+    const { resolveMemberId, discordIdentifier } = loadMembership(dataDir, SALT);
+    const memberId = "a".repeat(64);
+    writeIndex({ "discord:user:123456789012345678": memberId });
+
+    expect(resolveMemberId([discordIdentifier("123456789012345678")])).toBe(memberId);
+  });
+
+  it("takes the first identifier that matches, in the order given", () => {
+    const { resolveMemberId, emailIdentifier } = loadMembership(dataDir, SALT);
+    const viaDiscord = "a".repeat(64);
+    const viaEmail = "b".repeat(64);
+    writeIndex({
+      "discord:user:1": viaDiscord,
+      [emailIdentifier(viaEmail)]: viaEmail,
+    });
+
+    expect(resolveMemberId(["discord:user:1", emailIdentifier(viaEmail)])).toBe(viaDiscord);
+    expect(resolveMemberId([null, undefined, "", emailIdentifier(viaEmail)])).toBe(viaEmail);
+  });
+
+  // Every member who needs no link: their email hash is their id, and the
+  // index has never heard of them.
+  it("resolves an unindexed email identifier to itself", () => {
+    const { resolveMemberId, emailIdentifier } = loadMembership(dataDir, SALT);
+    const hash = "c".repeat(64);
+    expect(resolveMemberId([emailIdentifier(hash)])).toBe(hash);
+  });
+
+  // An account nobody has linked belongs to no member — it must not resolve to
+  // itself the way an email hash does.
+  it("does not invent a member for an unlinked account identifier", () => {
+    const { resolveMemberId } = loadMembership(dataDir, SALT);
+    expect(resolveMemberId(["discord:user:999"])).toBeNull();
+    expect(resolveMemberId(["nostr:pubkey:" + "d".repeat(64)])).toBeNull();
+  });
+
+  it("resolves nothing at all without a salt", () => {
+    const memberId = "a".repeat(64);
+    writeIndex({ "discord:user:1": memberId });
+    const { resolveMemberId } = loadMembership(dataDir, undefined);
+    expect(resolveMemberId(["discord:user:1"])).toBeNull();
+  });
+
+  // A future Nostr login is just another identifier in the list.
+  it("resolves a Nostr pubkey the same way, with no special case", () => {
+    const { resolveMemberId } = loadMembership(dataDir, SALT);
+    const memberId = "a".repeat(64);
+    const pubkey = "nostr:pubkey:" + "e".repeat(64);
+    writeIndex({ [pubkey]: memberId });
+    expect(resolveMemberId([pubkey])).toBe(memberId);
+  });
+});

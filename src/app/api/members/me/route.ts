@@ -14,7 +14,14 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { memberIdForEmail, membershipEnabled, readMemberHistory } from "@/lib/membership";
+import {
+  discordIdentifier,
+  emailIdentifier,
+  memberIdForEmail,
+  membershipEnabled,
+  readMemberHistory,
+  resolveMemberId,
+} from "@/lib/membership";
 
 export async function GET() {
   if (!membershipEnabled()) {
@@ -29,12 +36,24 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Discord is asked for the `email` scope at sign-in, but a user can have no
-  // verified address, and the provider is free to omit it.
-  const memberId = memberIdForEmail(session.user.email);
+  // Hand the resolver every identifier this session carries and take the
+  // match. The account id is tried first — it is the durable one, and it is
+  // what a linked member is found by — with the session's own email address as
+  // the fallback for the majority who subscribed under it and need no link.
+  //
+  // Nothing here privileges Discord: when Nostr auth lands it contributes
+  // `nostr:pubkey:…` to this list and the rest is unchanged.
+  const emailHash = memberIdForEmail(session.user.email);
+  const memberId = resolveMemberId([
+    session.user.discordId ? discordIdentifier(session.user.discordId) : null,
+    emailHash ? emailIdentifier(emailHash) : null,
+  ]);
   if (memberId === null) {
     return NextResponse.json(
-      { error: "No email address on this account, so it cannot be matched to a membership." },
+      {
+        error: "No membership is connected to this account yet.",
+        canLink: true,
+      },
       { status: 404 }
     );
   }
@@ -43,8 +62,12 @@ export async function GET() {
   if (history === null) {
     // Deliberately the same answer as "no such member": distinguishing them
     // would turn this endpoint into an oracle for whether an address is a
-    // member's.
-    return NextResponse.json({ error: "No membership found for this account." }, { status: 404 });
+    // member's. `canLink` invites the visitor to prove ownership of the
+    // address they subscribed with, which is the way out of both cases.
+    return NextResponse.json(
+      { error: "No membership is connected to this account yet.", canLink: true },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json(history);

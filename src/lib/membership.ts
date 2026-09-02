@@ -45,6 +45,30 @@ const MEMBER_ID_PATTERN = /^[0-9a-f]{64}$/;
  * rather than a habit.
  */
 const RESTRICTED_MEMBERS_DIR = ["latest", "generated", "restricted", "members"];
+const IDENTITY_INDEX = ["latest", "generated", "restricted", "members-index.json"];
+
+/**
+ * Member identifiers use the NIP-73 URI convention the dataset already uses
+ * for every other entity — a typed, self-describing handle:
+ *
+ *     discord:user:<snowflake>
+ *     nostr:pubkey:<32-byte hex>
+ *     email:sha256:<the salted emailHash>
+ *
+ * No kind is privileged. Discord is what people sign in with today; that is a
+ * fact about the deployment, not about this module. When Nostr auth lands it
+ * supplies `nostr:pubkey:…` and nothing here changes.
+ *
+ * A Discord *username* is deliberately not an identifier: usernames have been
+ * mutable since 2023, so identity keys on the account id.
+ */
+export function emailIdentifier(emailHash: string): string {
+  return `email:sha256:${emailHash.trim().toLowerCase()}`;
+}
+
+export function discordIdentifier(discordId: string): string {
+  return `discord:user:${discordId.trim()}`;
+}
 
 /**
  * The configured salt, or null when this host has none. Read on every call
@@ -122,5 +146,53 @@ export function readMemberHistory(memberId: string): MemberHistory | null {
     return JSON.parse(fs.readFileSync(file, "utf-8")) as MemberHistory;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Resolves the first of `identifiers` that belongs to a member, or null.
+ *
+ * Callers pass everything the session knows and take the match, rather than
+ * asking for a particular kind — which is what keeps a new auth provider from
+ * touching this code.
+ *
+ * An email identifier resolves to itself when the index has never heard of it:
+ * that is every member who needs no link, and it is why introducing the index
+ * migrated nothing.
+ */
+export function resolveMemberId(identifiers: (string | null | undefined)[]): string | null {
+  if (!membershipEnabled()) return null;
+
+  const index = readIdentityIndex();
+  for (const raw of identifiers) {
+    const identifier = (raw || "").trim().toLowerCase();
+    if (identifier === "") continue;
+
+    const linked = index[identifier];
+    if (linked) return linked;
+
+    if (identifier.startsWith("email:sha256:")) {
+      const hash = identifier.slice("email:sha256:".length);
+      if (/^[0-9a-f]{64}$/.test(hash)) return hash;
+    }
+  }
+  return null;
+}
+
+/** Whether an identifier belongs to a member, without revealing which one. */
+export function identifierBelongsToAMember(identifier: string): boolean {
+  const memberId = resolveMemberId([identifier]);
+  return memberId !== null && readMemberHistory(memberId) !== null;
+}
+
+function readIdentityIndex(): Record<string, string> {
+  const file = assertNotPrivate(path.join(DATA_DIR, ...IDENTITY_INDEX));
+  if (file === null) return {};
+  try {
+    if (!fs.existsSync(file)) return {};
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+    return (parsed?.identifiers as Record<string, string>) || {};
+  } catch {
+    return {};
   }
 }

@@ -103,6 +103,8 @@ NEXTAUTH_SECRET=...
 RESEND_API_KEY=...
 WEBHOOK_SECRET=...
 EMAIL_HASH_SALT=...
+MEMBER_LINK_SECRET=...
+MEMBERSHIP_STEWARD_EMAIL=hello@commonshub.brussels
 ```
 
 `DATA_DIR` is optional and defaults to `/data`.
@@ -122,6 +124,17 @@ mismatch people.
 
 Never rotate it. A new salt re-identifies the entire membership: every id
 changes, every history splits in two, and nothing links the halves.
+
+`MEMBER_LINK_SECRET` enables self-service linking, for members who pay with one
+address and sign in with another. It signs the verification codes mailed to a
+claimed address; the codes are stateless, so nothing is stored and rotating this
+secret only invalidates codes currently in flight — unlike `EMAIL_HASH_SALT`,
+which must never be rotated. Without it the linking flow is off and the rest of
+the membership surface still works.
+
+`MEMBERSHIP_STEWARD_EMAIL` is where a verified link is sent for someone to apply
+to chb's `settings/member-links.json`; it defaults to `hello@commonshub.brussels`.
+Automating that last hop is issue #35.
 
 Member data is read from chb's `restricted/` tree
 (`latest/generated/restricted/members/`), which exists to be served to the

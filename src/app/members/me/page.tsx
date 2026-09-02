@@ -22,7 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft, CalendarDays, Info, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, ArrowLeft, CalendarDays, Info, ExternalLink, MailCheck } from "lucide-react";
 import type { Amount, MemberHistory, MemberHistoryMonth } from "@/types/members";
 
 function formatAmount(amount: Amount): string {
@@ -75,6 +76,7 @@ export default function MyMembershipPage() {
   const [history, setHistory] = useState<MemberHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [canLink, setCanLink] = useState(false);
 
   useEffect(() => {
     if (sessionStatus === "loading") return;
@@ -88,6 +90,7 @@ export default function MyMembershipPage() {
       .then(async (res) => {
         if (res.ok) return res.json();
         const body = await res.json().catch(() => ({}));
+        setCanLink(Boolean(body.canLink));
         throw new Error(body.error || "Could not load your membership.");
       })
       .then((data: MemberHistory) => {
@@ -145,11 +148,13 @@ export default function MyMembershipPage() {
               <CardTitle>No membership found</CardTitle>
               <CardDescription>{error}</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground space-y-2">
+            <CardContent className="text-sm text-muted-foreground space-y-4">
               <p>
-                If you are a member, the address on your Discord account may differ from the
-                one you subscribed with.
+                If you are a member, you probably subscribed with a different address than
+                the one on your Discord account. Connect it below — we will mail that
+                address a code to check it is yours.
               </p>
+              {canLink && <LinkAddressForm />}
               <Link href="/membership" className="inline-flex items-center gap-1 underline">
                 About membership <ExternalLink className="w-3 h-3" />
               </Link>
@@ -230,5 +235,107 @@ export default function MyMembershipPage() {
         )}
       </main>
     </div>
+  );
+}
+
+/**
+ * Connects the address someone subscribed with to the account they signed in
+ * with, once they prove they can read that mailbox.
+ *
+ * The form never learns whether an address belongs to a member: the request
+ * step answers the same way either way, so it cannot be used to probe the
+ * membership list.
+ */
+function LinkAddressForm() {
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [stage, setStage] = useState<"email" | "code" | "done">("email");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function post(url: string, body: object) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    return data;
+  }
+
+  async function requestCode(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setFailure(null);
+    try {
+      const data = await post("/api/members/link/request", { email });
+      setMessage(data.message);
+      setStage("code");
+    } catch (err) {
+      setFailure((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmCode(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setFailure(null);
+    try {
+      const data = await post("/api/members/link/confirm", { email, code });
+      setMessage(data.message);
+      setStage("done");
+    } catch (err) {
+      setFailure((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (stage === "done") {
+    return (
+      <div className="flex items-start gap-2 rounded-md border p-3 text-foreground">
+        <MailCheck className="w-4 h-4 mt-0.5 shrink-0" />
+        <span>{message}</span>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={stage === "email" ? requestCode : confirmCode} className="space-y-3">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Input
+          type="email"
+          required
+          value={email}
+          disabled={stage === "code" || busy}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="the address you subscribed with"
+          aria-label="Email address you subscribed with"
+        />
+        {stage === "code" && (
+          <Input
+            inputMode="numeric"
+            pattern="[0-9]{6}"
+            required
+            value={code}
+            disabled={busy}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="6-digit code"
+            aria-label="Verification code"
+            className="sm:w-40"
+          />
+        )}
+        <Button type="submit" disabled={busy}>
+          {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          {stage === "email" ? "Send code" : "Confirm"}
+        </Button>
+      </div>
+      {message && stage === "code" && <p className="text-xs">{message}</p>}
+      {failure && <p className="text-xs text-destructive">{failure}</p>}
+    </form>
   );
 }
